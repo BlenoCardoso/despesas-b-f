@@ -159,8 +159,8 @@
         100% { transform: translate(-50%, -50%) rotate(360deg); }
       }
       
-      /* Hide spinner when app loads */
-      #root:not(:empty) + .loading-spinner {
+      /* Hide spinner when app loads (use general sibling so ordering between elements doesn't matter) */
+      #root:not(:empty) ~ .loading-spinner {
         display: none;
       }
     </style>
