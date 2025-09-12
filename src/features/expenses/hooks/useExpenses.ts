@@ -3,9 +3,8 @@ import { expenseService } from '../services/expenseService'
 import { categoryService } from '../services/categoryService'
 import { budgetService } from '../services/budgetService'
 import { useCurrentHousehold, useCurrentUser } from '@/core/store'
-import { Expense, ExpenseFormData, ExpenseFilter, ExpenseListOptions } from '../types'
-import { Category, Budget } from '@/types/global'
-import { BudgetFormData, BudgetWithUsage } from '../services/budgetService'
+import { ExpenseFormData, ExpenseFilter, ExpenseListOptions } from '../types'
+import { BudgetFormData } from '../services/budgetService'
 import { CategoryFormData } from '../services/categoryService'
 
 // Query keys
@@ -308,6 +307,84 @@ export function useAttachmentBlob(blobRef: string) {
     queryFn: () => expenseService.getAttachmentBlob(blobRef),
     enabled: !!blobRef,
     staleTime: Infinity, // Blobs don't change
+  })
+}
+
+// Hook para despesas filtradas
+export function useFilteredExpenses(filter: ExpenseFilter, searchText?: string) {
+  const currentHousehold = useCurrentHousehold()
+  
+  return useQuery({
+    queryKey: [...expenseKeys.all, 'filtered', currentHousehold?.id || '', filter, searchText],
+    queryFn: async () => {
+      const expenses = await expenseService.getExpenses(currentHousehold?.id || '', {
+        filter: filter ? { ...filter, searchText } : { searchText },
+        sortBy: 'date',
+        sortOrder: 'desc',
+        page: 1,
+        pageSize: 1000,
+        groupBy: 'date',
+      })
+
+      // Aplicar filtros locais adicionais se necessário
+      let filteredExpenses = expenses
+
+      // Filtro por texto (se não foi aplicado no serviço)
+      if (searchText && searchText.trim()) {
+        const searchLower = searchText.toLowerCase()
+        filteredExpenses = filteredExpenses.filter(expense =>
+          expense.title.toLowerCase().includes(searchLower) ||
+          expense.notes?.toLowerCase().includes(searchLower)
+        )
+      }
+
+      // Filtros por data
+      if (filter.startDate || filter.endDate) {
+        filteredExpenses = filteredExpenses.filter(expense => {
+          const expenseDate = new Date(expense.date)
+          if (filter.startDate && expenseDate < filter.startDate) return false
+          if (filter.endDate && expenseDate > filter.endDate) return false
+          return true
+        })
+      }
+
+      // Filtros por valor
+      if (filter.minAmount !== undefined || filter.maxAmount !== undefined) {
+        filteredExpenses = filteredExpenses.filter(expense => {
+          if (filter.minAmount !== undefined && expense.amount < filter.minAmount) return false
+          if (filter.maxAmount !== undefined && expense.amount > filter.maxAmount) return false
+          return true
+        })
+      }
+
+      // Filtros por categoria
+      if (filter.categoryIds && filter.categoryIds.length > 0) {
+        filteredExpenses = filteredExpenses.filter(expense =>
+          filter.categoryIds!.includes(expense.categoryId)
+        )
+      }
+
+      // Filtros por forma de pagamento
+      if (filter.paymentMethods && filter.paymentMethods.length > 0) {
+        filteredExpenses = filteredExpenses.filter(expense =>
+          filter.paymentMethods!.includes(expense.paymentMethod)
+        )
+      }
+
+      // Filtros por recorrência
+      if (filter.hasRecurrence) {
+        filteredExpenses = filteredExpenses.filter(expense => !!expense.recurrence)
+      }
+
+      // Filtros por parcelamento
+      if (filter.hasInstallments) {
+        filteredExpenses = filteredExpenses.filter(expense => !!expense.installment)
+      }
+
+      return filteredExpenses
+    },
+    enabled: !!currentHousehold?.id,
+    staleTime: 1000 * 60 * 2, // 2 minutes
   })
 }
 

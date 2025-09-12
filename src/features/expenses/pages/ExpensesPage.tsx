@@ -35,8 +35,10 @@ import { ExpenseList } from '../components/ExpenseList'
 import { ExpenseForm } from '../components/ExpenseForm'
 import { AttachmentViewer } from '@/components/AttachmentViewer'
 import { AttachmentViewerDemo } from '@/components/AttachmentViewerDemo'
+import { ExpenseFiltersForm } from '../components/ExpenseFiltersForm'
 import { 
   useExpenses, 
+  useFilteredExpenses,
   useMonthlyExpenses,
   useCategories,
   useBudgetSummary,
@@ -49,6 +51,7 @@ import { useCurrentHousehold } from '@/core/store'
 import { Expense, ExpenseFilter } from '../types'
 import { Attachment } from '@/types/global'
 import { calculateDailyAverage, calculateMonthlyProjection, calculateMonthlyVariation } from '@/core/utils/calculations'
+import { formatCurrency } from '@/core/utils/formatters'
 import { toast } from 'sonner'
 
 export function ExpensesPage() {
@@ -63,9 +66,18 @@ export function ExpensesPage() {
   const currentMonthStr = format(currentMonth, 'yyyy-MM')
 
   // Queries
-  const { data: monthlyExpenses = [], isLoading: expensesLoading } = useMonthlyExpenses(currentMonth)
   const { data: categories = [] } = useCategories()
   const { data: budgetSummary } = useBudgetSummary(currentMonthStr)
+  
+  // Use filtered expenses hook
+  const { data: filteredExpenses = [], isLoading: expensesLoading } = useFilteredExpenses(
+    {
+      ...activeFilters,
+      startDate: startOfMonth(currentMonth),
+      endDate: endOfMonth(currentMonth)
+    },
+    searchText
+  )
 
   // Mutations
   const createExpenseMutation = useCreateExpense()
@@ -73,7 +85,24 @@ export function ExpensesPage() {
   const deleteExpenseMutation = useDeleteExpense()
   const duplicateExpenseMutation = useDuplicateExpense()
 
-  // Filter expenses based on search and filters
+  // Keep for backward compatibility - remove the old filtering logic
+  const monthlyExpenses = filteredExpenses
+
+  // Calculate active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    if (activeFilters.categoryIds?.length) count++
+    if (activeFilters.paymentMethods?.length) count++
+    if (activeFilters.minAmount !== undefined) count++
+    if (activeFilters.maxAmount !== undefined) count++
+    if (activeFilters.hasRecurrence) count++
+    if (activeFilters.hasInstallments) count++
+    if (searchText.trim()) count++
+    return count
+  }, [activeFilters, searchText])
+
+  // Old filtering logic - now handled by useFilteredExpenses hook
+  /*
   const filteredExpenses = useMemo(() => {
     let filtered = monthlyExpenses
 
@@ -110,6 +139,7 @@ export function ExpensesPage() {
 
     return filtered
   }, [monthlyExpenses, searchText, activeFilters, categories])
+  */
 
   // Calculate summary data
   const summaryData = useMemo(() => {
@@ -131,6 +161,20 @@ export function ExpensesPage() {
       variationFromLastMonth,
     }
   }, [monthlyExpenses, budgetSummary, currentMonth])
+
+  // Filter handlers
+  const handleFiltersChange = (filters: ExpenseFilter) => {
+    setActiveFilters(filters)
+  }
+
+  const handleSearchChange = (text: string) => {
+    setSearchText(text)
+  }
+
+  const handleResetFilters = () => {
+    setActiveFilters({})
+    setSearchText('')
+  }
 
   // Handlers
   const handleCreateExpense = async (data: any) => {
@@ -195,15 +239,7 @@ export function ExpensesPage() {
     }
   }
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0
-    if (activeFilters.categoryIds?.length) count++
-    if (activeFilters.paymentMethods?.length) count++
-    if (activeFilters.minAmount !== undefined) count++
-    if (activeFilters.maxAmount !== undefined) count++
-    if (searchText.trim()) count++
-    return count
-  }, [activeFilters, searchText])
+
 
   return (
     <div className="container mx-auto p-4 space-y-6">
@@ -255,7 +291,7 @@ export function ExpensesPage() {
           <Input
             placeholder="Buscar despesas..."
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
             className="pl-10"
           />
         </div>
@@ -282,10 +318,13 @@ export function ExpensesPage() {
                 Filtre suas despesas por categoria, forma de pagamento e valor
               </SheetDescription>
             </SheetHeader>
-            {/* TODO: Implement filter form */}
-            <div className="mt-6">
-              <p className="text-sm text-gray-500">Filtros em desenvolvimento...</p>
-            </div>
+            <ExpenseFiltersForm
+              filters={activeFilters}
+              categories={categories}
+              onFiltersChange={handleFiltersChange}
+              onReset={handleResetFilters}
+              activeFilterCount={activeFilterCount}
+            />
           </SheetContent>
         </Sheet>
 
@@ -310,7 +349,31 @@ export function ExpensesPage() {
               <button onClick={() => setSearchText('')}>×</button>
             </Badge>
           )}
-          {/* TODO: Add other active filter badges */}
+          
+          {activeFilters.categoryIds?.length && (
+            <Badge variant="secondary" className="gap-1">
+              {activeFilters.categoryIds.length} categoria{activeFilters.categoryIds.length > 1 ? 's' : ''}
+              <button onClick={() => setActiveFilters(prev => ({ ...prev, categoryIds: [] }))}>×</button>
+            </Badge>
+          )}
+          
+          {activeFilters.paymentMethods?.length && (
+            <Badge variant="secondary" className="gap-1">
+              {activeFilters.paymentMethods.length} forma{activeFilters.paymentMethods.length > 1 ? 's' : ''} de pagamento
+              <button onClick={() => setActiveFilters(prev => ({ ...prev, paymentMethods: [] }))}>×</button>
+            </Badge>
+          )}
+          
+          {(activeFilters.minAmount !== undefined || activeFilters.maxAmount !== undefined) && (
+            <Badge variant="secondary" className="gap-1">
+              Valor: {activeFilters.minAmount !== undefined ? `≥${formatCurrency(activeFilters.minAmount)}` : ''}{activeFilters.minAmount !== undefined && activeFilters.maxAmount !== undefined ? ' e ' : ''}{activeFilters.maxAmount !== undefined ? `≤${formatCurrency(activeFilters.maxAmount)}` : ''}
+              <button onClick={() => setActiveFilters(prev => ({ ...prev, minAmount: undefined, maxAmount: undefined }))}>×</button>
+            </Badge>
+          )}
+          
+          <Button variant="outline" size="sm" onClick={handleResetFilters}>
+            Limpar todos
+          </Button>
         </motion.div>
       )}
 
