@@ -33,6 +33,8 @@ import { ptBR } from 'date-fns/locale'
 import { ExpenseSummaryCard } from '../components/ExpenseSummaryCard'
 import { ExpenseList } from '../components/ExpenseList'
 import { ExpenseForm } from '../components/ExpenseForm'
+import { AttachmentViewer } from '@/components/AttachmentViewer'
+import { AttachmentViewerDemo } from '@/components/AttachmentViewerDemo'
 import { 
   useExpenses, 
   useMonthlyExpenses,
@@ -45,6 +47,7 @@ import {
 } from '../hooks/useExpenses'
 import { useCurrentHousehold } from '@/core/store'
 import { Expense, ExpenseFilter } from '../types'
+import { Attachment } from '@/types/global'
 import { calculateDailyAverage, calculateMonthlyProjection, calculateMonthlyVariation } from '@/core/utils/calculations'
 import { toast } from 'sonner'
 
@@ -176,9 +179,20 @@ export function ExpensesPage() {
     setEditingExpense(expense)
   }
 
+  const [viewingAttachments, setViewingAttachments] = useState<{
+    attachments: Attachment[]
+    index?: number
+  } | null>(null)
+
   const handleViewAttachments = (expense: Expense) => {
-    // TODO: Implement attachment viewer
-    toast.info('Visualizador de anexos em desenvolvimento')
+    if (expense.attachments && expense.attachments.length > 0) {
+      setViewingAttachments({
+        attachments: expense.attachments,
+        index: 0
+      })
+    } else {
+      toast.info('Esta despesa não possui anexos')
+    }
   }
 
   const activeFilterCount = useMemo(() => {
@@ -224,6 +238,9 @@ export function ExpensesPage() {
           </Button>
         </div>
       </div>
+
+      {/* Demo do Visualizador de Anexos - Remover após teste */}
+      <AttachmentViewerDemo />
 
       {/* Summary Card */}
       <ExpenseSummaryCard
@@ -351,6 +368,16 @@ export function ExpensesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Visualizador de Anexos */}
+      {viewingAttachments && (
+        <AttachmentViewer
+          attachments={viewingAttachments.attachments}
+          initialIndex={viewingAttachments.index}
+          open={!!viewingAttachments}
+          onClose={() => setViewingAttachments(null)}
+        />
+      )}
     </div>
   )
 }

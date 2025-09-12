@@ -12,6 +12,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
     "@hookform/resolvers": "^5.0.1",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",
@@ -72,6 +74,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
     "@eslint/js": "^9.25.0",
     "@tanstack/react-query-devtools": "^5.87.4",
     "@testing-library/jest-dom": "^6.8.0",

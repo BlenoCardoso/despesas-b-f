@@ -53,9 +53,14 @@ export default defineConfig({
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
               },
-              cacheKeyWillBeUsed: async ({ request }) => {
-                return `${request.url}?v=1`
-              }
+              plugins: [
+                {
+                  // Custom plugin to tweak the cache key
+                  cacheKeyWillBeUsed: async ({ request }: { request: Request }) => {
+                    return `${request.url}?v=1`
+                  }
+                }
+              ]
             }
           }
         ]
@@ -79,11 +84,6 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     strictPort: true,
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
   },
   define: {
     global: 'globalThis',
