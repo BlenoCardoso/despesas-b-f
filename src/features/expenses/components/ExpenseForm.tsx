@@ -333,7 +333,7 @@ export function ExpenseForm({
               {attachments.length > 0 && (
                 <div className="space-y-2">
                   {attachments.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div key={index} className="flex items-center justify-between p-2 bg-muted/50 border rounded">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
                         <span className="text-sm">{file.name}</span>
@@ -362,13 +362,15 @@ export function ExpenseForm({
               <h3 className="text-lg font-medium">Opções Avançadas</h3>
               
               {/* Recurrence */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors">
                 <div className="space-y-0.5">
-                  <Label className="flex items-center gap-2">
-                    <Repeat className="h-4 w-4" />
+                  <Label className="flex items-center gap-2 font-medium">
+                    <div className="p-1 rounded bg-blue-100 dark:bg-blue-900">
+                      <Repeat className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                    </div>
                     Despesa recorrente
                   </Label>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Criar automaticamente esta despesa em intervalos regulares
                   </p>
                 </div>
@@ -379,57 +381,59 @@ export function ExpenseForm({
               </div>
 
               {showRecurrence && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-                  <FormField
-                    control={form.control}
-                    name="recurrence.type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Frequência</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <div className="space-y-4 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="recurrence.type"
+                      render={({ field }: { field: any }) => (
+                        <FormItem>
+                          <FormLabel>Frequência</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {recurrenceTypes.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="recurrence.interval"
+                      render={({ field }: { field: any }) => (
+                        <FormItem>
+                          <FormLabel>Intervalo</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="365"
+                              placeholder="1"
+                              {...field}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseInt(e.target.value) || 1)}
+                            />
                           </FormControl>
-                          <SelectContent>
-                            {recurrenceTypes.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="recurrence.interval"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Intervalo</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="365"
-                            placeholder="1"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
                   <FormField
                     control={form.control}
                     name="recurrence.endDate"
-                    render={({ field }) => (
+                    render={({ field }: { field: any }) => (
                       <FormItem>
                         <FormLabel>Data final (opcional)</FormLabel>
                         <Popover>
@@ -456,7 +460,7 @@ export function ExpenseForm({
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
-                              disabled={(date) => date < new Date()}
+                              disabled={(date: Date) => date < new Date()}
                               initialFocus
                             />
                           </PopoverContent>
@@ -469,10 +473,15 @@ export function ExpenseForm({
               )}
 
               {/* Installments */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30 transition-colors">
                 <div className="space-y-0.5">
-                  <Label>Parcelamento</Label>
-                  <p className="text-sm text-gray-500">
+                  <Label className="flex items-center gap-2 font-medium">
+                    <div className="p-1 rounded bg-green-100 dark:bg-green-900">
+                      <CreditCard className="h-3 w-3 text-green-600 dark:text-green-400" />
+                    </div>
+                    Parcelamento
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
                     Dividir esta despesa em parcelas
                   </p>
                 </div>
@@ -483,11 +492,11 @@ export function ExpenseForm({
               </div>
 
               {showInstallment && (
-                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-green-50/50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
                   <FormField
                     control={form.control}
                     name="installment.count"
-                    render={({ field }) => (
+                    render={({ field }: { field: any }) => (
                       <FormItem>
                         <FormLabel>Parcela atual</FormLabel>
                         <FormControl>
@@ -496,7 +505,7 @@ export function ExpenseForm({
                             min="1"
                             placeholder="1"
                             {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseInt(e.target.value) || 1)}
                           />
                         </FormControl>
                         <FormMessage />
@@ -507,7 +516,7 @@ export function ExpenseForm({
                   <FormField
                     control={form.control}
                     name="installment.total"
-                    render={({ field }) => (
+                    render={({ field }: { field: any }) => (
                       <FormItem>
                         <FormLabel>Total de parcelas</FormLabel>
                         <FormControl>
@@ -517,7 +526,7 @@ export function ExpenseForm({
                             max="999"
                             placeholder="12"
                             {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseInt(e.target.value) || 1)}
                           />
                         </FormControl>
                         <FormMessage />
