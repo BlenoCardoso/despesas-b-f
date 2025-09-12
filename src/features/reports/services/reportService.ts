@@ -652,11 +652,273 @@ class ReportService {
     return csvContent
   }
 
+  async exportToExcel(data: any[], filename: string): Promise<Blob> {
+    const XLSX = await import('xlsx')
+    
+    // Create workbook
+    const wb = XLSX.utils.book_new()
+    
+    // Add main data sheet
+    const ws = XLSX.utils.json_to_sheet(data)
+    
+    // Style the header row
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!ws[cellAddress]) continue
+      ws[cellAddress].s = {
+        font: { bold: true },
+        fill: { fgColor: { rgb: "3B82F6" } },
+        alignment: { horizontal: "center" }
+      }
+    }
+    
+    XLSX.utils.book_append_sheet(wb, ws, 'Dados')
+    
+    // Add summary sheet if data has financial information
+    if (data.length > 0 && ('valor' in data[0] || 'amount' in data[0])) {
+      const summary = this.generateSummaryData(data)
+      const summaryWs = XLSX.utils.json_to_sheet(summary)
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumo')
+    }
+    
+    // Convert to blob
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    return new Blob([excelBuffer], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+  }
+
   async exportToPDF(reportData: any, reportType: string): Promise<Blob> {
-    // This would integrate with a PDF generation library
-    // For now, return a placeholder
-    const content = JSON.stringify(reportData, null, 2)
-    return new Blob([content], { type: 'application/json' })
+    const jsPDF = (await import('jspdf')).default
+    const html2canvas = (await import('html2canvas')).default
+    
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    
+    // Add logo and header
+    await this.addPDFHeader(pdf, reportType, pageWidth)
+    
+    let yPosition = 50
+    
+    // Add report content based on type
+    switch (reportType) {
+      case 'expenses':
+        yPosition = await this.addExpenseReportToPDF(pdf, reportData, yPosition, pageWidth)
+        break
+      case 'tasks':
+        yPosition = await this.addTaskReportToPDF(pdf, reportData, yPosition, pageWidth)
+        break
+      case 'medications':
+        yPosition = await this.addMedicationReportToPDF(pdf, reportData, yPosition, pageWidth)
+        break
+      default:
+        yPosition = await this.addGenericReportToPDF(pdf, reportData, yPosition, pageWidth)
+    }
+    
+    // Add footer
+    this.addPDFFooter(pdf, pageWidth, pageHeight)
+    
+    return pdf.output('blob')
+  }
+
+  private generateSummaryData(data: any[]): any[] {
+    if (data.length === 0) return []
+    
+    const summary: any[] = []
+    
+    // Check if it's expense data
+    if ('valor' in data[0] || 'amount' in data[0]) {
+      const valueField = 'valor' in data[0] ? 'valor' : 'amount'
+      const total = data.reduce((sum, item) => sum + (parseFloat(item[valueField]) || 0), 0)
+      const average = total / data.length
+      
+      summary.push(
+        { Métrica: 'Total de Registros', Valor: data.length },
+        { Métrica: 'Valor Total', Valor: `R$ ${total.toFixed(2)}` },
+        { Métrica: 'Valor Médio', Valor: `R$ ${average.toFixed(2)}` },
+        { Métrica: 'Valor Máximo', Valor: `R$ ${Math.max(...data.map(d => parseFloat(d[valueField]) || 0)).toFixed(2)}` },
+        { Métrica: 'Valor Mínimo', Valor: `R$ ${Math.min(...data.map(d => parseFloat(d[valueField]) || 0)).toFixed(2)}` }
+      )
+    }
+    
+    return summary
+  }
+
+  private async addPDFHeader(pdf: any, reportType: string, pageWidth: number): Promise<void> {
+    // Add logo (if available)
+    try {
+      // Try to load logo - for now we'll create a simple text logo
+      pdf.setFillColor(59, 130, 246) // Blue color
+      pdf.circle(20, 20, 8, 'F')
+      
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(12)
+      pdf.text('$', 17, 23)
+    } catch (error) {
+      console.warn('Logo not available, using text instead')
+    }
+    
+    // App title
+    pdf.setTextColor(0, 0, 0)
+    pdf.setFontSize(20)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Despesas Compartilhadas', 35, 20)
+    
+    // Report title
+    pdf.setFontSize(16)
+    pdf.setFont('helvetica', 'normal')
+    const reportTitles: Record<string, string> = {
+      expenses: 'Relatório de Despesas',
+      tasks: 'Relatório de Tarefas',
+      medications: 'Relatório de Medicamentos',
+      general: 'Relatório Geral'
+    }
+    pdf.text(reportTitles[reportType] || 'Relatório', 35, 28)
+    
+    // Date
+    pdf.setFontSize(10)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}`, 35, 35)
+    
+    // Line separator
+    pdf.setDrawColor(200, 200, 200)
+    pdf.line(15, 40, pageWidth - 15, 40)
+  }
+
+  private async addExpenseReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+    pdf.setFontSize(14)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Resumo Financeiro', 15, yPosition)
+    yPosition += 10
+    
+    // Summary boxes
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    
+    const summaryData = [
+      ['Total de Despesas', formatCurrency(reportData.totalExpenses)],
+      ['Total de Receitas', formatCurrency(reportData.totalIncome)],
+      ['Saldo', formatCurrency(reportData.balance)],
+      ['Período', reportData.period]
+    ]
+    
+    summaryData.forEach(([label, value], index) => {
+      const x = 15 + (index % 2) * 90
+      const y = yPosition + Math.floor(index / 2) * 15
+      
+      pdf.setFillColor(248, 250, 252)
+      pdf.rect(x, y - 5, 85, 12, 'F')
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(label, x + 2, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(value, x + 2, y + 6)
+    })
+    
+    yPosition += 40
+    
+    // Categories table
+    if (reportData.expensesByCategory && reportData.expensesByCategory.length > 0) {
+      pdf.setFontSize(12)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Despesas por Categoria', 15, yPosition)
+      yPosition += 10
+      
+      // Table headers
+      pdf.setFillColor(59, 130, 246)
+      pdf.rect(15, yPosition - 5, pageWidth - 30, 8, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(9)
+      pdf.text('Categoria', 17, yPosition)
+      pdf.text('Valor', pageWidth - 60, yPosition)
+      pdf.text('Percentual', pageWidth - 30, yPosition)
+      yPosition += 8
+      
+      // Table rows
+      pdf.setTextColor(0, 0, 0)
+      reportData.expensesByCategory.slice(0, 15).forEach((category: any, index: number) => {
+        if (yPosition > 270) {
+          pdf.addPage()
+          yPosition = 20
+        }
+        
+        if (index % 2 === 0) {
+          pdf.setFillColor(248, 250, 252)
+          pdf.rect(15, yPosition - 5, pageWidth - 30, 8, 'F')
+        }
+        
+        pdf.text(category.category, 17, yPosition)
+        pdf.text(formatCurrency(category.amount), pageWidth - 60, yPosition)
+        pdf.text(`${category.percentage.toFixed(1)}%`, pageWidth - 30, yPosition)
+        yPosition += 8
+      })
+    }
+    
+    return yPosition + 10
+  }
+
+  private async addTaskReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+    pdf.setFontSize(14)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Resumo de Tarefas', 15, yPosition)
+    yPosition += 15
+    
+    // Add task summary content here
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.text('Relatório de tarefas será implementado em breve.', 15, yPosition)
+    
+    return yPosition + 20
+  }
+
+  private async addMedicationReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+    pdf.setFontSize(14)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Resumo de Medicamentos', 15, yPosition)
+    yPosition += 15
+    
+    // Add medication summary content here
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.text('Relatório de medicamentos será implementado em breve.', 15, yPosition)
+    
+    return yPosition + 20
+  }
+
+  private async addGenericReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('Dados do Relatório:', 15, yPosition)
+    yPosition += 10
+    
+    // Add generic data
+    const dataString = JSON.stringify(reportData, null, 2)
+    const lines = dataString.split('\n').slice(0, 30) // Limit lines
+    
+    pdf.setFontSize(8)
+    lines.forEach(line => {
+      if (yPosition > 270) {
+        pdf.addPage()
+        yPosition = 20
+      }
+      pdf.text(line.substring(0, 100), 15, yPosition) // Limit line length
+      yPosition += 4
+    })
+    
+    return yPosition + 10
+  }
+
+  private addPDFFooter(pdf: any, pageWidth: number, pageHeight: number): void {
+    const footerY = pageHeight - 15
+    
+    pdf.setDrawColor(200, 200, 200)
+    pdf.line(15, footerY - 5, pageWidth - 15, footerY - 5)
+    
+    pdf.setFontSize(8)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text('Despesas Compartilhadas - Aplicativo de Gestão Financeira', 15, footerY)
+    pdf.text(`Página ${pdf.internal.getNumberOfPages()}`, pageWidth - 30, footerY)
   }
 }
 

@@ -53,6 +53,8 @@ import { Attachment } from '@/types/global'
 import { calculateDailyAverage, calculateMonthlyProjection, calculateMonthlyVariation } from '@/core/utils/calculations'
 import { formatCurrency } from '@/core/utils/formatters'
 import { toast } from 'sonner'
+import { useExportReport } from '@/features/reports/hooks/useReports'
+import { useNavigate } from 'react-router-dom'
 
 export function ExpensesPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -64,6 +66,8 @@ export function ExpensesPage() {
 
   const currentHousehold = useCurrentHousehold()
   const currentMonthStr = format(currentMonth, 'yyyy-MM')
+  const navigate = useNavigate()
+  const exportReport = useExportReport()
 
   // Queries
   const { data: categories = [] } = useCategories()
@@ -239,7 +243,151 @@ export function ExpensesPage() {
     }
   }
 
+  // Handler para exportar despesas
+  const handleExportExpenses = () => {
+    // Criar um menu dropdown ou modal para escolher o formato
+    const exportOptions = [
+      { label: 'CSV', format: 'csv' as const },
+      { label: 'Excel', format: 'excel' as const },
+      { label: 'PDF', format: 'pdf' as const }
+    ]
 
+    // Por enquanto, vamos criar botões para cada opção
+    const createExportButton = (format: 'csv' | 'excel' | 'pdf') => {
+      const button = document.createElement('button')
+      button.textContent = `Exportar ${format.toUpperCase()}`
+      button.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2'
+      button.onclick = () => handleExportFormat(format)
+      return button
+    }
+
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
+    modal.innerHTML = `
+      <div class="bg-white p-6 rounded-lg shadow-lg">
+        <h3 class="text-lg font-semibold mb-4">Escolha o formato de exportação</h3>
+        <div class="flex gap-2 mb-4">
+          <button id="csv-btn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">CSV</button>
+          <button id="excel-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Excel</button>
+          <button id="pdf-btn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">PDF</button>
+        </div>
+        <button id="cancel-btn" class="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
+      </div>
+    `
+    
+    document.body.appendChild(modal)
+    
+    // Add event listeners
+    modal.querySelector('#csv-btn')?.addEventListener('click', () => {
+      handleExportFormat('csv')
+      document.body.removeChild(modal)
+    })
+    modal.querySelector('#excel-btn')?.addEventListener('click', () => {
+      handleExportFormat('excel')
+      document.body.removeChild(modal)
+    })
+    modal.querySelector('#pdf-btn')?.addEventListener('click', () => {
+      handleExportFormat('pdf')
+      document.body.removeChild(modal)
+    })
+    modal.querySelector('#cancel-btn')?.addEventListener('click', () => {
+      document.body.removeChild(modal)
+    })
+    
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal)
+      }
+    })
+  }
+
+  const handleExportFormat = async (exportFormat: 'csv' | 'excel' | 'pdf') => {
+    try {
+      const expensesToExport = filteredExpenses.map(expense => ({
+        data: format(new Date(expense.date), 'dd/MM/yyyy'),
+        descricao: expense.title,
+        categoria: categories.find(c => c.id === expense.categoryId)?.name || 'Não categorizada',
+        valor: expense.amount,
+        metodo_pagamento: expense.paymentMethod,
+        notas: expense.notes || ''
+      }))
+
+      const filename = `despesas_${format(currentMonth, 'yyyy-MM')}`
+
+      if (exportFormat === 'pdf') {
+        // Para PDF, usar os dados de relatório mais completos
+        const { reportService } = await import('@/features/reports/services/reportService')
+        const reportData = {
+          period: format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR }),
+          totalExpenses: filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+          totalIncome: 0,
+          balance: -filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+          expensesByCategory: categories.map(cat => {
+            const categoryExpenses = filteredExpenses.filter(exp => exp.categoryId === cat.id)
+            const amount = categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0)
+            return {
+              category: cat.name,
+              amount,
+              percentage: filteredExpenses.length > 0 ? (amount / filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0)) * 100 : 0,
+              count: categoryExpenses.length
+            }
+          }).filter(cat => cat.amount > 0)
+        }
+        
+        const pdfBlob = await reportService.exportToPDF(reportData, 'expenses')
+        const url = window.URL.createObjectURL(pdfBlob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${filename}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } else if (exportFormat === 'excel') {
+        const { reportService } = await import('@/features/reports/services/reportService')
+        const excelBlob = await reportService.exportToExcel(expensesToExport, filename)
+        const url = window.URL.createObjectURL(excelBlob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${filename}.xlsx`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } else {
+        await exportReport.mutateAsync({
+          data: expensesToExport,
+          format: exportFormat as 'csv',
+          filename
+        })
+      }
+
+      toast.success(`Despesas exportadas em ${exportFormat.toUpperCase()} com sucesso!`)
+    } catch (error) {
+      toast.error(`Erro ao exportar despesas em ${exportFormat.toUpperCase()}`)
+    }
+  }
+
+  // Handler para importar despesas
+  const handleImportExpenses = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,.xlsx,.xls'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        toast.info('Funcionalidade de importação em desenvolvimento')
+        // TODO: Implementar importação de arquivo
+      }
+    }
+    input.click()
+  }
+
+  // Handler para navegar para relatórios
+  const handleViewReports = () => {
+    navigate('/reports')
+  }
 
   return (
     <div className="container mx-auto p-4 space-y-6">
@@ -253,17 +401,29 @@ export function ExpensesPage() {
         </div>
         
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleExportExpenses}
+          >
             <Download className="h-4 w-4 mr-2" />
             Exportar
           </Button>
           
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleImportExpenses}
+          >
             <Upload className="h-4 w-4 mr-2" />
             Importar
           </Button>
           
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleViewReports}
+          >
             <TrendingUp className="h-4 w-4 mr-2" />
             Relatórios
           </Button>
