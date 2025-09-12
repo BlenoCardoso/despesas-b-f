@@ -311,20 +311,22 @@ export function ExpensesPage() {
               )}
             </Button>
           </SheetTrigger>
-          <SheetContent>
-            <SheetHeader>
+          <SheetContent className="flex flex-col h-full">
+            <SheetHeader className="shrink-0">
               <SheetTitle>Filtros</SheetTitle>
               <SheetDescription>
                 Filtre suas despesas por categoria, forma de pagamento e valor
               </SheetDescription>
             </SheetHeader>
-            <ExpenseFiltersForm
-              filters={activeFilters}
-              categories={categories}
-              onFiltersChange={handleFiltersChange}
-              onReset={handleResetFilters}
-              activeFilterCount={activeFilterCount}
-            />
+            <div className="flex-1 min-h-0 -mx-6 px-6">
+              <ExpenseFiltersForm
+                filters={activeFilters}
+                categories={categories}
+                onFiltersChange={handleFiltersChange}
+                onReset={handleResetFilters}
+                activeFilterCount={activeFilterCount}
+              />
+            </div>
           </SheetContent>
         </Sheet>
 
