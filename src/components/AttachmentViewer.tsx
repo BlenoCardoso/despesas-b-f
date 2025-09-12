@@ -10,7 +10,6 @@ import {
   Film, 
   Music, 
   File,
-  X,
   ChevronLeft,
   ChevronRight,
   ZoomIn,
@@ -50,6 +49,10 @@ export function AttachmentViewer({
   const [zoom, setZoom] = useState(100)
   const [rotation, setRotation] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  
+  // Touch/swipe handling for mobile
+  const [touchStart, setTouchStart] = useState<number>(0)
+  const [touchEnd, setTouchEnd] = useState<number>(0)
 
   // Toggle fullscreen mode for the image within the dialog
   const toggleFullscreen = () => {
@@ -236,6 +239,33 @@ export function AttachmentViewer({
     setRotation(0)
   }
 
+  // Touch handlers for swipe navigation
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(0) // Reset end position
+    setTouchStart(e.targetTouches[0].clientX)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX)
+  }
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return
+    
+    const distance = touchStart - touchEnd
+    const minSwipeDistance = 50
+    
+    // Swipe left (next attachment)
+    if (distance > minSwipeDistance && attachmentData.length > 1) {
+      nextAttachment()
+    }
+    
+    // Swipe right (previous attachment)
+    if (distance < -minSwipeDistance && attachmentData.length > 1) {
+      prevAttachment()
+    }
+  }
+
   const renderAttachmentContent = () => {
     if (!currentAttachment) return null
 
@@ -244,27 +274,60 @@ export function AttachmentViewer({
 
     if (isImage(mimeType)) {
       return (
-        <div className={`flex items-center justify-center h-full ${fullscreen ? 'min-h-[80vh] bg-black' : 'min-h-[400px] bg-gray-50 dark:bg-gray-900'}`}>
+        <div className={`flex items-center justify-center h-full overflow-hidden ${fullscreen ? 'bg-black' : 'bg-gray-50 dark:bg-gray-900'}`}>
           <img
             src={dataUrl}
             alt={attachment.fileName}
-            className={`object-contain transition-all duration-300 ${fullscreen ? 'max-w-[90vw] max-h-[80vh]' : 'max-w-full max-h-full'}`}
+            className="object-contain transition-all duration-300 touch-pinch-zoom max-w-full max-h-full"
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+              maxWidth: fullscreen ? '100vw' : '100%',
+              maxHeight: fullscreen ? '100vh' : '100%',
             }}
+            onDoubleClick={() => setZoom(zoom === 100 ? 150 : 100)}
           />
+          
+          {/* Mobile zoom controls overlay */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full p-2 sm:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setZoom(Math.max(25, zoom - 25))}
+              disabled={zoom <= 25}
+              className="w-8 h-8 text-white hover:bg-white/20"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+            <span className="text-xs text-white min-w-[3rem] text-center">
+              {zoom}%
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setZoom(Math.min(200, zoom + 25))}
+              disabled={zoom >= 200}
+              className="w-8 h-8 text-white hover:bg-white/20"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       )
     }
 
     if (isVideo(mimeType)) {
       return (
-        <div className={`flex items-center justify-center h-full ${fullscreen ? 'min-h-[80vh]' : 'min-h-[400px]'} bg-black`}>
+        <div className="flex items-center justify-center h-full bg-black overflow-hidden">
           <video
             src={dataUrl}
             controls
-            className={`${fullscreen ? 'max-w-[90vw] max-h-[80vh]' : 'max-w-full max-h-full'} transition-all duration-300`}
-            style={{ transform: `scale(${zoom / 100})` }}
+            className="max-w-full max-h-full object-contain"
+            style={{ 
+              maxWidth: fullscreen ? '100vw' : '100%',
+              maxHeight: fullscreen ? '100vh' : '100%'
+            }}
+            playsInline
+            preload="metadata"
           >
             Seu navegador não suporta reprodução de vídeo.
           </video>
@@ -274,12 +337,15 @@ export function AttachmentViewer({
 
     if (isAudio(mimeType)) {
       return (
-        <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 dark:bg-gray-900">
-          <div className="text-center space-y-4">
-            <Music className="w-24 h-24 mx-auto text-gray-400" />
-            <audio src={dataUrl} controls className="w-full max-w-md">
-              Seu navegador não suporta reprodução de áudio.
-            </audio>
+        <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 p-4">
+          <div className="text-center space-y-4 w-full max-w-md">
+            <Music className="w-16 h-16 sm:w-24 sm:h-24 mx-auto text-gray-400" />
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm sm:text-base truncate">{attachment.fileName}</h3>
+              <audio src={dataUrl} controls className="w-full">
+                Seu navegador não suporta reprodução de áudio.
+              </audio>
+            </div>
           </div>
         </div>
       )
@@ -287,11 +353,12 @@ export function AttachmentViewer({
 
     if (isPDF(mimeType)) {
       return (
-        <div className="h-full min-h-[400px]">
+        <div className="h-full overflow-hidden">
           <iframe
             src={dataUrl}
             className="w-full h-full border-0"
             title={attachment.fileName}
+            style={{ minHeight: '300px' }}
           />
         </div>
       )
@@ -299,15 +366,20 @@ export function AttachmentViewer({
 
     // Arquivo não visualizável - mostrar info e opção de download
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 dark:bg-gray-900">
-        <div className="text-center space-y-4">
-          {getFileIcon(mimeType)}
-          <div>
-            <h3 className="font-medium">{attachment.fileName}</h3>
-            <p className="text-sm text-gray-600">
-              {formatFileSize(attachment.size)} • {mimeType}
+      <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 p-4">
+        <div className="text-center space-y-4 max-w-md w-full">
+          <div className="w-16 h-16 sm:w-24 sm:h-24 mx-auto text-gray-400 flex items-center justify-center">
+            {getFileIcon(mimeType)}
+          </div>
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm sm:text-base truncate">{attachment.fileName}</h3>
+            <p className="text-xs sm:text-sm text-gray-600">
+              {formatFileSize(attachment.size)}
             </p>
-            <Button onClick={handleDownload} className="mt-4">
+            <p className="text-xs text-gray-500 truncate">
+              {mimeType}
+            </p>
+            <Button onClick={handleDownload} className="mt-4 w-full sm:w-auto">
               <Download className="w-4 h-4 mr-2" />
               Baixar arquivo
             </Button>
@@ -352,30 +424,32 @@ export function AttachmentViewer({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={`${fullscreen ? 'max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh]' : 'max-w-6xl h-[90vh]'} p-0`}>
+      <DialogContent className={`${fullscreen ? 'max-w-[100vw] max-h-[100vh] w-full h-full' : 'max-w-[95vw] max-h-[95vh] w-full h-full sm:max-w-4xl lg:max-w-6xl sm:h-[90vh]'} p-0 overflow-hidden`}>
         {/* Header */}
-        <DialogHeader className={`${fullscreen ? 'p-2' : 'p-4'} border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {getFileIcon(currentAttachment.attachment.mimeType)}
-              <div>
-                <DialogTitle className="text-base">
+        <DialogHeader className={`${fullscreen ? 'p-2 sm:p-3' : 'p-3 sm:p-4'} border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex-shrink-0`}>
+          <div className="flex items-center justify-between gap-2 pr-8">
+            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+              <div className="flex-shrink-0">
+                {getFileIcon(currentAttachment.attachment.mimeType)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-sm sm:text-base truncate">
                   {currentAttachment.attachment.fileName}
                 </DialogTitle>
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <span>{formatFileSize(currentAttachment.attachment.size)}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {currentAttachment.attachment.mimeType}
+                <div className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-gray-600">
+                  <span className="shrink-0">{formatFileSize(currentAttachment.attachment.size)}</span>
+                  <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
+                    {currentAttachment.attachment.mimeType.split('/')[0]}
                   </Badge>
                   {attachmentData.length > 1 && (
-                    <span>• {currentIndex + 1} de {attachmentData.length}</span>
+                    <span className="shrink-0">• {currentIndex + 1}/{attachmentData.length}</span>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              {/* Controls for images */}
+            <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+              {/* Controls for images - hide some on mobile */}
               {isImage(currentAttachment.attachment.mimeType) && (
                 <>
                   <Button
@@ -383,10 +457,11 @@ export function AttachmentViewer({
                     size="sm"
                     onClick={() => setZoom(Math.max(25, zoom - 25))}
                     disabled={zoom <= 25}
+                    className="hidden sm:flex"
                   >
                     <ZoomOut className="w-4 h-4" />
                   </Button>
-                  <span className="text-sm text-gray-600 min-w-[3rem] text-center">
+                  <span className="text-xs sm:text-sm text-gray-600 min-w-[2rem] sm:min-w-[3rem] text-center hidden sm:inline">
                     {zoom}%
                   </span>
                   <Button
@@ -394,6 +469,7 @@ export function AttachmentViewer({
                     size="sm"
                     onClick={() => setZoom(Math.min(200, zoom + 25))}
                     disabled={zoom >= 200}
+                    className="hidden sm:flex"
                   >
                     <ZoomIn className="w-4 h-4" />
                   </Button>
@@ -401,44 +477,58 @@ export function AttachmentViewer({
                     variant="ghost"
                     size="sm"
                     onClick={() => setRotation((rotation + 90) % 360)}
+                    className="w-8 h-8 sm:w-auto sm:h-auto"
                   >
-                    <RotateCw className="w-4 h-4" />
+                    <RotateCw className="w-3 h-3 sm:w-4 sm:h-4" />
                   </Button>
                 </>
               )}
 
-              <Button variant="ghost" size="sm" onClick={handleShare}>
-                <Share2 className="w-4 h-4" />
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleShare}
+                className="w-8 h-8 sm:w-auto sm:h-auto"
+              >
+                <Share2 className="w-3 h-3 sm:w-4 sm:h-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleDownload}>
-                <Download className="w-4 h-4" />
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleDownload}
+                className="w-8 h-8 sm:w-auto sm:h-auto"
+              >
+                <Download className="w-3 h-3 sm:w-4 sm:h-4" />
               </Button>
               <Button 
                 variant="ghost" 
                 size="sm" 
                 onClick={toggleFullscreen}
                 title={fullscreen ? "Sair da visualização expandida (ESC)" : "Visualização expandida"}
+                className="w-8 h-8 sm:w-auto sm:h-auto"
               >
-                {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onClose}>
-                <X className="w-4 h-4" />
+                {fullscreen ? <Minimize2 className="w-3 h-3 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3 h-3 sm:w-4 sm:h-4" />}
               </Button>
             </div>
           </div>
         </DialogHeader>
 
         {/* Content */}
-        <div className="flex-1 relative overflow-hidden">
+        <div 
+          className="flex-1 relative overflow-hidden select-none"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {renderAttachmentContent()}
 
-          {/* Navigation arrows */}
+          {/* Navigation arrows - responsive positioning */}
           {attachmentData.length > 1 && (
             <>
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm"
+                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm w-8 h-8 sm:w-auto sm:h-auto p-0 sm:p-2"
                 onClick={prevAttachment}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -446,26 +536,35 @@ export function AttachmentViewer({
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm"
+                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm w-8 h-8 sm:w-auto sm:h-auto p-0 sm:p-2"
                 onClick={nextAttachment}
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </>
           )}
+
+          {/* Mobile swipe indicator */}
+          {attachmentData.length > 1 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1 sm:hidden">
+              <span className="text-xs text-white">
+                {currentIndex + 1} / {attachmentData.length}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Footer with thumbnails */}
-        {attachmentData.length > 1 && (
-          <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        {/* Footer with thumbnails - responsive layout */}
+        {attachmentData.length > 1 && !fullscreen && (
+          <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex-shrink-0">
             <ScrollArea className="w-full">
-              <div className="flex space-x-2 p-4">
+              <div className="flex space-x-2 p-2 sm:p-4">
                 {attachmentData.map((data, index) => (
                   <Button
                     key={data.attachment.id}
                     variant={index === currentIndex ? "default" : "outline"}
                     size="sm"
-                    className="flex-shrink-0 h-16 w-16 p-1"
+                    className="flex-shrink-0 h-12 w-12 sm:h-16 sm:w-16 p-1 relative"
                     onClick={() => {
                       setCurrentIndex(index)
                       resetView()
@@ -479,16 +578,62 @@ export function AttachmentViewer({
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full">
-                        {getFileIcon(data.attachment.mimeType)}
-                        <span className="text-xs mt-1 truncate w-full">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 mb-1">
+                          {getFileIcon(data.attachment.mimeType)}
+                        </div>
+                        <span className="text-xs truncate w-full hidden sm:block">
                           {data.attachment.fileName.split('.').pop()}
                         </span>
                       </div>
+                    )}
+                    
+                    {/* Active indicator */}
+                    {index === currentIndex && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-background sm:hidden" />
                     )}
                   </Button>
                 ))}
               </div>
             </ScrollArea>
+          </div>
+        )}
+
+        {/* Mobile fullscreen thumbnails - show as overlay */}
+        {attachmentData.length > 1 && fullscreen && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:hidden">
+            <div className="flex space-x-2 max-w-[80vw] overflow-x-auto">
+              {attachmentData.map((data, index) => (
+                <Button
+                  key={data.attachment.id}
+                  variant={index === currentIndex ? "secondary" : "ghost"}
+                  size="sm"
+                  className="flex-shrink-0 h-10 w-10 p-1 relative"
+                  onClick={() => {
+                    setCurrentIndex(index)
+                    resetView()
+                  }}
+                >
+                  {isImage(data.attachment.mimeType) ? (
+                    <img
+                      src={data.dataUrl}
+                      alt={data.attachment.fileName}
+                      className="w-full h-full object-cover rounded"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="w-4 h-4">
+                        {getFileIcon(data.attachment.mimeType)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Active indicator */}
+                  {index === currentIndex && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white rounded-full" />
+                  )}
+                </Button>
+              ))}
+            </div>
           </div>
         )}
       </DialogContent>
