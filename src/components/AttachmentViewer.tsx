@@ -17,7 +17,8 @@ import {
   ZoomOut,
   RotateCw,
   Share2,
-  Maximize2
+  Maximize2,
+  Minimize2
 } from 'lucide-react'
 import { Attachment } from '@/types/global'
 import { formatFileSize } from '@/core/utils/formatters'
@@ -49,6 +50,28 @@ export function AttachmentViewer({
   const [zoom, setZoom] = useState(100)
   const [rotation, setRotation] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+
+  // Toggle fullscreen mode for the image within the dialog
+  const toggleFullscreen = () => {
+    setFullscreen(!fullscreen)
+  }
+
+  // Listen for ESC key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && fullscreen) {
+        setFullscreen(false)
+      }
+    }
+
+    if (open) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [fullscreen, open])
 
   // Carregar dados dos anexos do IndexedDB
   useEffect(() => {
@@ -221,11 +244,11 @@ export function AttachmentViewer({
 
     if (isImage(mimeType)) {
       return (
-        <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 dark:bg-gray-900">
+        <div className={`flex items-center justify-center h-full ${fullscreen ? 'min-h-[80vh] bg-black' : 'min-h-[400px] bg-gray-50 dark:bg-gray-900'}`}>
           <img
             src={dataUrl}
             alt={attachment.fileName}
-            className="max-w-full max-h-full object-contain transition-transform duration-200"
+            className={`object-contain transition-all duration-300 ${fullscreen ? 'max-w-[90vw] max-h-[80vh]' : 'max-w-full max-h-full'}`}
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
             }}
@@ -236,11 +259,11 @@ export function AttachmentViewer({
 
     if (isVideo(mimeType)) {
       return (
-        <div className="flex items-center justify-center h-full min-h-[400px] bg-black">
+        <div className={`flex items-center justify-center h-full ${fullscreen ? 'min-h-[80vh]' : 'min-h-[400px]'} bg-black`}>
           <video
             src={dataUrl}
             controls
-            className="max-w-full max-h-full"
+            className={`${fullscreen ? 'max-w-[90vw] max-h-[80vh]' : 'max-w-full max-h-full'} transition-all duration-300`}
             style={{ transform: `scale(${zoom / 100})` }}
           >
             Seu navegador não suporta reprodução de vídeo.
@@ -329,9 +352,9 @@ export function AttachmentViewer({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={`max-w-6xl h-[90vh] p-0 ${fullscreen ? 'fixed inset-0 max-w-none max-h-none h-screen rounded-none' : ''}`}>
+      <DialogContent className={`${fullscreen ? 'max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh]' : 'max-w-6xl h-[90vh]'} p-0`}>
         {/* Header */}
-        <DialogHeader className="p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <DialogHeader className={`${fullscreen ? 'p-2' : 'p-4'} border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               {getFileIcon(currentAttachment.attachment.mimeType)}
@@ -393,9 +416,10 @@ export function AttachmentViewer({
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={() => setFullscreen(!fullscreen)}
+                onClick={toggleFullscreen}
+                title={fullscreen ? "Sair da visualização expandida (ESC)" : "Visualização expandida"}
               >
-                <Maximize2 className="w-4 h-4" />
+                {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </Button>
               <Button variant="ghost" size="sm" onClick={onClose}>
                 <X className="w-4 h-4" />
@@ -414,7 +438,7 @@ export function AttachmentViewer({
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-10"
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm"
                 onClick={prevAttachment}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -422,7 +446,7 @@ export function AttachmentViewer({
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-10"
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm"
                 onClick={nextAttachment}
               >
                 <ChevronRight className="w-4 h-4" />
