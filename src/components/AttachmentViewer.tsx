@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,15 @@ import { Attachment } from '@/types/global'
 import { formatFileSize } from '@/core/utils/formatters'
 import { toast } from 'sonner'
 import { expenseService } from '@/features/expenses/services/expenseService'
+import { 
+  attachmentCache, 
+  createImageThumbnail, 
+  isImageMimeType, 
+  isVideoMimeType,
+  preloadAttachment,
+  debounce,
+  cleanupObjectURLs 
+} from '@/utils/attachmentOptimization'
 
 interface AttachmentViewerProps {
   attachments: Attachment[]
@@ -35,7 +44,10 @@ interface AttachmentData {
   attachment: Attachment
   dataUrl: string
   blob: Blob
+  loaded: boolean
 }
+
+
 
 export function AttachmentViewer({ 
   attachments, 
@@ -53,6 +65,33 @@ export function AttachmentViewer({
   // Touch/swipe handling for mobile
   const [touchStart, setTouchStart] = useState<number>(0)
   const [touchEnd, setTouchEnd] = useState<number>(0)
+
+  // Pre-carregamento de imagens adjacentes para navegação mais rápida
+  useEffect(() => {
+    if (!attachmentData.length || currentIndex < 0) return
+
+    const preloadAdjacent = () => {
+      const nextIndex = (currentIndex + 1) % attachmentData.length
+      const prevIndex = (currentIndex - 1 + attachmentData.length) % attachmentData.length
+      
+      // Pre-carregar próxima imagem
+      if (attachmentData[nextIndex]?.loaded && isImage(attachmentData[nextIndex].attachment.mimeType)) {
+        const img = document.createElement('img')
+        img.src = attachmentData[nextIndex].dataUrl
+        img.style.display = 'none'
+      }
+      
+      // Pre-carregar imagem anterior
+      if (attachmentData[prevIndex]?.loaded && isImage(attachmentData[prevIndex].attachment.mimeType)) {
+        const img = document.createElement('img')
+        img.src = attachmentData[prevIndex].dataUrl
+        img.style.display = 'none'
+      }
+    }
+
+    const timeoutId = setTimeout(preloadAdjacent, 100)
+    return () => clearTimeout(timeoutId)
+  }, [currentIndex, attachmentData])
 
   // Toggle fullscreen mode for the image within the dialog
   const toggleFullscreen = () => {
@@ -76,49 +115,13 @@ export function AttachmentViewer({
     }
   }, [fullscreen, open])
 
-  // Carregar dados dos anexos do IndexedDB
-  useEffect(() => {
-    if (!open || !attachments.length) return
-
-    const loadAttachments = async () => {
-      setLoading(true)
-      try {
-        const data: AttachmentData[] = []
-        
-        for (const attachment of attachments) {
-          // Simular carregamento do IndexedDB - você precisará implementar isso
-          // baseado na sua implementação de armazenamento
-          const blob = await loadAttachmentBlob(attachment.blobRef)
-          const dataUrl = URL.createObjectURL(blob)
-          
-          data.push({
-            attachment,
-            dataUrl,
-            blob
-          })
-        }
-        
-        setAttachmentData(data)
-      } catch (error) {
-        console.error('Erro ao carregar anexos:', error)
-        toast.error('Erro ao carregar anexos')
-      } finally {
-        setLoading(false)
-      }
+  // Função otimizada para carregar blob com cache
+  const loadAttachmentBlob = useCallback(async (blobRef: string): Promise<Blob> => {
+    // Verificar cache primeiro
+    if (attachmentCache.has(blobRef)) {
+      return attachmentCache.get(blobRef)!.blob
     }
 
-    loadAttachments()
-
-    // Cleanup URLs when component unmounts
-    return () => {
-      attachmentData.forEach(data => {
-        URL.revokeObjectURL(data.dataUrl)
-      })
-    }
-  }, [open, attachments])
-
-  // Carregamento real do IndexedDB
-  const loadAttachmentBlob = async (blobRef: string): Promise<Blob> => {
     try {
       const blob = await expenseService.getAttachmentBlob(blobRef)
       if (!blob) {
@@ -138,9 +141,16 @@ export function AttachmentViewer({
         }
         
         return new Promise(resolve => {
-          canvas.toBlob(blob => resolve(blob || new Blob()), 'image/png')
+          canvas.toBlob(blob => {
+            const finalBlob = blob || new Blob()
+            attachmentCache.set(blobRef, { blob: finalBlob, cached: true })
+            resolve(finalBlob)
+          }, 'image/png')
         })
       }
+      
+      // Armazenar no cache
+      attachmentCache.set(blobRef, { blob, cached: true })
       return blob
     } catch (error) {
       console.error('Erro ao carregar anexo:', error)
@@ -160,10 +170,87 @@ export function AttachmentViewer({
       }
       
       return new Promise(resolve => {
-        canvas.toBlob(blob => resolve(blob || new Blob()), 'image/png')
+        canvas.toBlob(blob => {
+          const finalBlob = blob || new Blob()
+          attachmentCache.set(blobRef, { blob: finalBlob, cached: true })
+          resolve(finalBlob)
+        }, 'image/png')
       })
     }
-  }
+  }, [])
+
+  // Carregar dados dos anexos do IndexedDB com otimizações
+  useEffect(() => {
+    if (!open || !attachments.length) return
+
+    const loadAttachments = async () => {
+      setLoading(true)
+      try {
+        // Inicializar dados com placeholders
+        const initialData: AttachmentData[] = attachments.map(attachment => ({
+          attachment,
+          dataUrl: '',
+          blob: new Blob(),
+          loaded: false
+        }))
+        
+        setAttachmentData(initialData)
+        setLoading(false)
+
+        // Carregar anexo atual primeiro para reduzir delay percebido
+        const priorityIndexes = [
+          initialIndex,
+          ...[...Array(attachments.length)].map((_, i) => i).filter(i => i !== initialIndex)
+        ]
+
+        // Carregar anexos de forma assíncrona com prioridade
+        for (let i = 0; i < priorityIndexes.length; i++) {
+          const index = priorityIndexes[i]
+          const attachment = attachments[index]
+          
+          try {
+            const blob = await loadAttachmentBlob(attachment.blobRef)
+            const dataUrl = URL.createObjectURL(blob)
+            
+            setAttachmentData(prev => {
+              const newData = [...prev]
+              newData[index] = {
+                attachment,
+                dataUrl,
+                blob,
+                loaded: true
+              }
+              return newData
+            })
+
+            // Para o primeiro anexo (prioridade), dar um pequeno delay para o usuário ver
+            if (i === 0) {
+              await new Promise(resolve => setTimeout(resolve, 50))
+            }
+          } catch (error) {
+            console.error(`Erro ao carregar anexo ${index}:`, error)
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao carregar anexos:', error)
+        toast.error('Erro ao carregar anexos')
+        setLoading(false)
+      }
+    }
+
+    loadAttachments()
+
+    // Cleanup URLs when component unmounts
+    return () => {
+      attachmentData.forEach(data => {
+        if (data.dataUrl) {
+          URL.revokeObjectURL(data.dataUrl)
+        }
+      })
+    }
+  }, [open, attachments, initialIndex, loadAttachmentBlob])
+
+
 
   const currentAttachment = attachmentData[currentIndex]
 
@@ -222,34 +309,34 @@ export function AttachmentViewer({
     }
   }
 
-  const nextAttachment = () => {
+  const nextAttachment = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % attachmentData.length)
     setZoom(100)
     setRotation(0)
-  }
+  }, [attachmentData.length])
 
-  const prevAttachment = () => {
+  const prevAttachment = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + attachmentData.length) % attachmentData.length)
     setZoom(100)
     setRotation(0)
-  }
+  }, [attachmentData.length])
 
-  const resetView = () => {
+  const resetView = useCallback(() => {
     setZoom(100)
     setRotation(0)
-  }
+  }, [])
 
-  // Touch handlers for swipe navigation
-  const handleTouchStart = (e: React.TouchEvent) => {
+  // Touch handlers for swipe navigation - otimizados
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
     setTouchEnd(0) // Reset end position
     setTouchStart(e.targetTouches[0].clientX)
-  }
+  }, [])
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
     setTouchEnd(e.targetTouches[0].clientX)
-  }
+  }, [])
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     if (!touchStart || !touchEnd) return
     
     const distance = touchStart - touchEnd
@@ -264,10 +351,19 @@ export function AttachmentViewer({
     if (distance < -minSwipeDistance && attachmentData.length > 1) {
       prevAttachment()
     }
-  }
+  }, [touchStart, touchEnd, nextAttachment, prevAttachment, attachmentData.length])
 
-  const renderAttachmentContent = () => {
-    if (!currentAttachment) return null
+  const renderAttachmentContent = useMemo(() => {
+    if (!currentAttachment || !currentAttachment.loaded) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center space-y-2">
+            <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
+            <p className="text-sm text-gray-600">Carregando anexo...</p>
+          </div>
+        </div>
+      )
+    }
 
     const { attachment, dataUrl } = currentAttachment
     const { mimeType } = attachment
@@ -278,13 +374,15 @@ export function AttachmentViewer({
           <img
             src={dataUrl}
             alt={attachment.fileName}
-            className="object-contain transition-all duration-300 touch-pinch-zoom max-w-full max-h-full"
+            className="object-contain transition-all duration-200 touch-pinch-zoom max-w-full max-h-full"
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
               maxWidth: fullscreen ? '100vw' : '100%',
               maxHeight: fullscreen ? '100vh' : '100%',
             }}
             onDoubleClick={() => setZoom(zoom === 100 ? 150 : 100)}
+            loading="eager"
+            decoding="async"
           />
           
           {/* Mobile zoom controls overlay */}
@@ -327,7 +425,8 @@ export function AttachmentViewer({
               maxHeight: fullscreen ? '100vh' : '100%'
             }}
             playsInline
-            preload="metadata"
+            preload="auto"
+            muted
           >
             Seu navegador não suporta reprodução de vídeo.
           </video>
@@ -387,7 +486,7 @@ export function AttachmentViewer({
         </div>
       </div>
     )
-  }
+  }, [currentAttachment, zoom, rotation, fullscreen])
 
   if (loading) {
     return (
@@ -520,7 +619,7 @@ export function AttachmentViewer({
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {renderAttachmentContent()}
+          {renderAttachmentContent}
 
           {/* Navigation arrows - responsive positioning */}
           {attachmentData.length > 1 && (
@@ -570,11 +669,13 @@ export function AttachmentViewer({
                       resetView()
                     }}
                   >
-                    {isImage(data.attachment.mimeType) ? (
+                    {isImage(data.attachment.mimeType) && data.loaded ? (
                       <img
                         src={data.dataUrl}
                         alt={data.attachment.fileName}
                         className="w-full h-full object-cover rounded"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full">
@@ -613,11 +714,13 @@ export function AttachmentViewer({
                     resetView()
                   }}
                 >
-                  {isImage(data.attachment.mimeType) ? (
+                  {isImage(data.attachment.mimeType) && data.loaded ? (
                     <img
                       src={data.dataUrl}
                       alt={data.attachment.fileName}
                       className="w-full h-full object-cover rounded"
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full">
