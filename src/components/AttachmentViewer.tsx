@@ -24,13 +24,7 @@ import { formatFileSize } from '@/core/utils/formatters'
 import { toast } from 'sonner'
 import { expenseService } from '@/features/expenses/services/expenseService'
 import { 
-  attachmentCache, 
-  createImageThumbnail, 
-  isImageMimeType, 
-  isVideoMimeType,
-  preloadAttachment,
-  debounce,
-  cleanupObjectURLs 
+  attachmentCache
 } from '@/utils/attachmentOptimization'
 
 interface AttachmentViewerProps {
@@ -486,7 +480,7 @@ export function AttachmentViewer({
         </div>
       </div>
     )
-  }, [currentAttachment, zoom, rotation, fullscreen])
+  }, [currentAttachment, zoom, rotation, fullscreen, handleDownload])
 
   if (loading) {
     return (
