@@ -3,6 +3,7 @@ import { Expense } from '@/features/expenses/types'
 import { Task } from '@/features/tasks/types'
 import { Document } from '@/features/docs/types'
 import { Medication, MedicationIntake } from '@/features/medications/types'
+import { CalendarEvent } from '@/features/calendar/types'
 import type { Notification, NotificationPreferences } from '@/features/notifications/types'
 import { 
   Household, 
@@ -25,6 +26,7 @@ export interface DatabaseSchema {
   documents: Table<Document>
   medications: Table<Medication>
   medicationIntakes: Table<MedicationIntake>
+  calendarEvents: Table<CalendarEvent>
   
   // Notifications
   notifications: Table<Notification>
@@ -49,6 +51,7 @@ export class AppDatabase extends Dexie {
   tasks!: Table<Task>
   documents!: Table<Document>
   medications!: Table<Medication>
+  calendarEvents!: Table<CalendarEvent>
   medicationIntakes!: Table<MedicationIntake>
   
   // Notifications
@@ -127,6 +130,13 @@ export class AppDatabase extends Dexie {
     }).upgrade(tx => {
       console.log('Upgrading database to version 4 - Adding notification system...')
     })
+
+    // Version 5: Add calendar events
+    this.version(5).stores({
+      calendarEvents: '++id, householdId, userId, title, startDate, endDate, category, isImportant, isAllDay, createdAt, updatedAt, deletedAt, syncVersion, [householdId+startDate], [householdId+endDate], [category+startDate], [isImportant+startDate], [deletedAt+updatedAt]'
+    }).upgrade(tx => {
+      console.log('Upgrading database to version 5 - Adding calendar events...')
+    })
   }
 
   // Helper methods for common operations
@@ -194,6 +204,21 @@ export class AppDatabase extends Dexie {
 
   async softDeleteMedication(id: string): Promise<void> {
     await this.medications.update(id, { 
+      deletedAt: new Date(), 
+      updatedAt: new Date()
+    })
+  }
+
+  async getActiveCalendarEvents(householdId: string): Promise<CalendarEvent[]> {
+    return await this.calendarEvents
+      .where({ householdId })
+      .and(event => !event.deletedAt)
+      .reverse()
+      .sortBy('startDate')
+  }
+
+  async softDeleteCalendarEvent(id: string): Promise<void> {
+    await this.calendarEvents.update(id, { 
       deletedAt: new Date(), 
       updatedAt: new Date()
     })

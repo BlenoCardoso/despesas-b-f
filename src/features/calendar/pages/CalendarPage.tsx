@@ -2,18 +2,24 @@ import React, { useState } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Star } from 'lucide-react'
-import { useEventsForMonth, useUpcomingEvents, useImportantEvents } from '../hooks/useCalendar'
-import { CalendarEvent } from '../types'
+import { useEventsForMonth, useUpcomingEvents, useImportantEvents, useCreateEvent } from '../hooks/useCalendar'
+import { CalendarEvent, CalendarEventFormData } from '../types'
+import { EventForm } from '../components/EventForm'
+import { toast } from 'sonner'
 
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [view, setView] = useState<'month' | 'agenda'>('month')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [showEventForm, setShowEventForm] = useState(false)
 
   // Queries
-  const { data: monthEvents = [], isLoading: eventsLoading } = useEventsForMonth(currentDate)
+  const { data: monthEvents = [] } = useEventsForMonth(currentDate)
   const { data: upcomingEvents = [] } = useUpcomingEvents(7)
   const { data: importantEvents = [] } = useImportantEvents()
+
+  // Mutations
+  const createEventMutation = useCreateEvent()
 
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
@@ -29,14 +35,61 @@ export function CalendarPage() {
     setCurrentDate(newDate)
   }
 
+  const handleCreateEvent = async (data: CalendarEventFormData) => {
+    try {
+      console.log('Criando evento:', {
+        title: data.title,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        startDateString: data.startDate.toISOString(),
+        endDateString: data.endDate.toISOString()
+      })
+      
+      const createdEvent = await createEventMutation.mutateAsync(data)
+      console.log('Evento criado:', createdEvent)
+      
+      toast.success('Evento criado com sucesso!')
+      setShowEventForm(false)
+    } catch (error) {
+      console.error('Erro ao criar evento:', error)
+      toast.error('Erro ao criar evento. Tente novamente.')
+    }
+  }
+
+  const handleNewEventClick = () => {
+    setShowEventForm(true)
+  }
+
   const getEventsForDay = (date: Date): CalendarEvent[] => {
-    return monthEvents.filter(event => {
+    console.log(`Buscando eventos para: ${date.toDateString()}`, {
+      totalEventsThisMonth: monthEvents.length,
+      monthEvents: monthEvents.map(e => ({ title: e.title, startDate: e.startDate, endDate: e.endDate }))
+    })
+    
+    const filteredEvents = monthEvents.filter(event => {
       const eventStart = typeof event.startDate === 'string' ? new Date(event.startDate) : event.startDate
       const eventEnd = typeof event.endDate === 'string' ? new Date(event.endDate) : event.endDate
       
+      // Normalize dates to compare only the date part (ignore time)
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      const eventStartDate = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate())
+      const eventEndDate = new Date(eventEnd.getFullYear(), eventEnd.getMonth(), eventEnd.getDate())
+      
       // Check if event spans this day
-      return eventStart <= date && eventEnd >= date
+      const matches = eventStartDate <= dateOnly && eventEndDate >= dateOnly
+      
+      console.log(`Evento "${event.title}":`, {
+        eventStartDate: eventStartDate.toDateString(),
+        eventEndDate: eventEndDate.toDateString(),
+        targetDate: dateOnly.toDateString(),
+        matches
+      })
+      
+      return matches
     })
+    
+    console.log(`Eventos encontrados para ${date.toDateString()}:`, filteredEvents.length)
+    return filteredEvents
   }
 
   const renderCalendarDay = (date: Date) => {
@@ -71,7 +124,7 @@ export function CalendarPage() {
         </div>
         
         <div className="space-y-1">
-          {dayEvents.slice(0, 3).map((event, index) => (
+          {dayEvents.slice(0, 3).map((event) => (
             <div
               key={event.id}
               className="text-xs p-1 rounded truncate"
@@ -101,8 +154,6 @@ export function CalendarPage() {
   }
 
   const renderAgendaView = () => {
-    const today = new Date()
-    const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
     
     return (
       <div className="space-y-6">
@@ -226,7 +277,10 @@ export function CalendarPage() {
                 </button>
               </div>
               
-              <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+              <button 
+                onClick={handleNewEventClick}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Evento
               </button>
@@ -302,6 +356,14 @@ export function CalendarPage() {
           </div>
         )}
       </div>
+
+      {/* Event Form Modal */}
+      <EventForm
+        isOpen={showEventForm}
+        onClose={() => setShowEventForm(false)}
+        onSubmit={handleCreateEvent}
+        selectedDate={selectedDate || undefined}
+      />
     </div>
   )
 }

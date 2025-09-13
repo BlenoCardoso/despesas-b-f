@@ -80,7 +80,17 @@ export function useEventsForMonth(month: Date) {
   
   return useQuery({
     queryKey: calendarKeys.forMonth(currentHousehold?.id || '', month),
-    queryFn: () => calendarService.getEventsForMonth(currentHousehold?.id || '', month),
+    queryFn: async () => {
+      console.log('Carregando eventos para o mês:', {
+        month: month.toDateString(),
+        householdId: currentHousehold?.id
+      })
+      
+      const events = await calendarService.getEventsForMonth(currentHousehold?.id || '', month)
+      console.log('Eventos carregados:', events.length, events)
+      
+      return events
+    },
     enabled: !!currentHousehold?.id,
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
