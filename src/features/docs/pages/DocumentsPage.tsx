@@ -9,7 +9,7 @@ import { DocumentForm } from '../components/DocumentForm'
 export function DocumentsPage() {
   const [searchText, setSearchText] = useState('')
   const [activeFilter, setActiveFilter] = useState<'all' | 'important' | 'expired' | 'expiring'>('all')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
   const [showDocumentForm, setShowDocumentForm] = useState(false)
 
   // Queries
@@ -148,10 +148,14 @@ export function DocumentsPage() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className={`inline-flex items-center px-3 py-2 border rounded-md text-sm font-medium transition-colors ${
+                  showFilters 
+                    ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                    : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                }`}
               >
                 <Filter className="h-4 w-4 mr-2" />
-                Filtros
+                {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
               </button>
               
               <button 
@@ -169,7 +173,7 @@ export function DocumentsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar with Filters */}
-          <div className={`lg:w-64 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+          <div className={`lg:w-64 ${showFilters ? 'block' : 'hidden'}`}>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Filtros</h3>
               
