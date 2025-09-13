@@ -233,11 +233,11 @@ export function DocumentsPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Total</span>
-                    <span className="font-medium">{stats.total}</span>
+                    <span className="font-medium text-gray-900">{stats.total}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Tamanho total</span>
-                    <span className="font-medium">{formatFileSize(stats.totalSize)}</span>
+                    <span className="font-medium text-gray-900">{formatFileSize(stats.totalSize)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Importantes</span>
