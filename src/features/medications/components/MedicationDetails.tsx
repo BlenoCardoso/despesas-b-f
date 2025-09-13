@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { X, Pill, Clock, User, Calendar, Package, Plus, Check, AlertTriangle } from 'lucide-react'
+import { useState } from 'react'
+import { X, Pill, Clock, User, Calendar, Package, Plus, Check, AlertTriangle, History } from 'lucide-react'
 import { Medication } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { IntakeHistory } from './IntakeHistory'
 
 interface MedicationDetailsProps {
   medication: Medication | null
@@ -13,6 +14,7 @@ interface MedicationDetailsProps {
 
 export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake }: MedicationDetailsProps) {
   const [showIntakeForm, setShowIntakeForm] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [intakeData, setIntakeData] = useState({
     dosage: '',
     time: new Date().toTimeString().slice(0, 5), // HH:MM format
@@ -69,20 +71,27 @@ export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake 
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Quick Actions */}
-          <div className="flex space-x-3">
+          <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setShowIntakeForm(!showIntakeForm)}
-              className="flex-1 flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               <Plus className="h-4 w-4 mr-2" />
               Registrar Tomada
             </button>
             <button
               onClick={() => handleRecordIntake()}
-              className="flex-1 flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
             >
               <Check className="h-4 w-4 mr-2" />
               Tomada Rápida
+            </button>
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors col-span-2"
+            >
+              <History className="h-4 w-4 mr-2" />
+              Ver Histórico de Tomadas
             </button>
           </div>
 
@@ -281,6 +290,15 @@ export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake 
           </button>
         </div>
       </div>
+
+      {/* Intake History Modal */}
+      {medication && (
+        <IntakeHistory
+          medication={medication}
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   )
 }

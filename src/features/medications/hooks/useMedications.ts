@@ -249,6 +249,31 @@ export function useAddStock() {
   })
 }
 
+// Direct intake recording (without pre-existing schedule)
+export function useRecordDirectIntake() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ 
+      medicationId, 
+      dosageTaken, 
+      actualDateTime, 
+      notes 
+    }: { 
+      medicationId: string
+      dosageTaken: number
+      actualDateTime?: Date
+      notes?: string 
+    }) =>
+      medicationService.recordDirectIntake(medicationId, dosageTaken, actualDateTime, notes),
+    onSuccess: () => {
+      // Invalidate all relevant queries
+      queryClient.invalidateQueries({ queryKey: medicationKeys.intakes() })
+      queryClient.invalidateQueries({ queryKey: medicationKeys.lists() })
+    },
+  })
+}
+
 // Utility hooks
 export function useMedicationForms() {
   return {

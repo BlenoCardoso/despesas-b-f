@@ -21,7 +21,7 @@ export interface MedicationStock {
 }
 
 export interface MedicationIntake {
-  id?: string
+  id?: number
   medicationId: string
   dateTimePlanned: Date
   dateTimeTaken?: Date

@@ -8,13 +8,15 @@ import {
   useTodaysIntakes,
   useOverdueIntakes,
   useRecordIntake,
-  useSkipIntake
+  useSkipIntake,
+  useRecordDirectIntake
 } from '../hooks/useMedications'
 import { Medication, MedicationIntake } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { MedicationForm } from '../components/MedicationForm'
 import { MedicationDetails } from '../components/MedicationDetails'
+import { StockSummary } from '../components/StockSummary'
 
 export function MedicationsPage() {
   const [searchText, setSearchText] = useState('')
@@ -36,6 +38,7 @@ export function MedicationsPage() {
   // Mutations
   const recordIntakeMutation = useRecordIntake()
   const skipIntakeMutation = useSkipIntake()
+  const recordDirectIntakeMutation = useRecordDirectIntake()
 
   // Filter medications based on active filter
   const getFilteredMedications = () => {
@@ -122,20 +125,36 @@ export function MedicationsPage() {
 
   const handleRecordNewIntake = async (medicationId: string, dosage: number, time?: Date, notes?: string) => {
     try {
-      // Criar uma entrada de tomada direta (simulação)
-      const now = new Date()
+      const medicationBefore = selectedMedication
       
-      alert(`Tomada registrada com sucesso!
-Medicamento: ${selectedMedication?.name}
-Dosagem: ${dosage} ${selectedMedication?.unit}
-Horário: ${time?.toLocaleTimeString() || now.toLocaleTimeString()}
-${notes ? `Observações: ${notes}` : ''}`)
+      await recordDirectIntakeMutation.mutateAsync({
+        medicationId,
+        dosageTaken: dosage,
+        actualDateTime: time,
+        notes
+      })
+
+      // Calculate new stock after intake
+      const newStock = Math.max(0, (medicationBefore?.stockQuantity || 0) - dosage)
+      const stockStatus = newStock === 0 ? 'SEM ESTOQUE!' : 
+                         newStock <= (medicationBefore?.lowStockThreshold || 5) ? 'ESTOQUE BAIXO!' : 
+                         'Estoque OK'
+
+      alert(`✅ Tomada registrada com sucesso!
+
+📋 Medicamento: ${selectedMedication?.name}
+💊 Dosagem tomada: ${dosage} ${selectedMedication?.unit}
+🕐 Horário: ${time?.toLocaleString('pt-BR') || new Date().toLocaleString('pt-BR')}
+📦 Estoque anterior: ${medicationBefore?.stockQuantity || 0} ${selectedMedication?.unit}
+📦 Estoque atual: ${newStock} ${selectedMedication?.unit}
+⚠️  Status: ${stockStatus}
+${notes ? `📝 Observações: ${notes}` : ''}`)
 
       // Fechar o modal de detalhes
       setShowMedicationDetails(false)
     } catch (error) {
       console.error('Erro ao registrar tomada:', error)
-      alert('Erro ao registrar tomada')
+      alert('❌ Erro ao registrar tomada. Tente novamente.')
     }
   }
 
@@ -305,6 +324,9 @@ ${notes ? `Observações: ${notes}` : ''}`)
 
             {/* Main Content - Medications */}
             <div className="flex-1">
+              {/* Stock Summary */}
+              {allMedications && <StockSummary medications={allMedications} />}
+              
               <div className="mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">
                   {filterOptions.find(f => f.key === activeFilter)?.label || 'Todos os Remédios'}

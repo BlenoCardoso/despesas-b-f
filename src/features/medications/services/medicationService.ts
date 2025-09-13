@@ -78,7 +78,7 @@ export class MedicationService {
       .toArray()
     
     for (const intake of futureIntakes) {
-      await db.medicationIntakes.update(intake.id!, { status: 'cancelled' })
+      await db.medicationIntakes.update(intake.id!, { status: 'skipped' })
     }
   }
 
@@ -289,7 +289,7 @@ export class MedicationService {
       status: 'taken',
       dateTimeTaken: actualDateTime || new Date(),
       dosageTaken: dosageTaken,
-      notes,
+      note: notes,
     })
 
     // Update stock quantity
@@ -306,12 +306,44 @@ export class MedicationService {
   }
 
   /**
+   * Record a new medication intake directly (without pre-existing schedule)
+   */
+  async recordDirectIntake(medicationId: string, dosageTaken: number, actualDateTime?: Date, notes?: string): Promise<MedicationIntake> {
+    const medication = await db.medications.get(medicationId)
+    if (!medication) {
+      throw new Error('Medication not found')
+    }
+
+    const intake: Omit<MedicationIntake, 'id'> = {
+      medicationId,
+      dateTimePlanned: actualDateTime || new Date(),
+      dateTimeTaken: actualDateTime || new Date(),
+      status: 'taken',
+      dosageTaken,
+      note: notes,
+      medication
+    }
+
+    const intakeId = await db.medicationIntakes.add(intake)
+    
+    // Update stock quantity
+    if (medication.stockQuantity > 0) {
+      await db.medications.update(medication.id, {
+        stockQuantity: Math.max(0, medication.stockQuantity - dosageTaken),
+        updatedAt: new Date(),
+      })
+    }
+
+    return { ...intake, id: intakeId as number }
+  }
+
+  /**
    * Skip medication intake
    */
   async skipIntake(intakeId: number, reason?: string): Promise<void> {
     await db.medicationIntakes.update(intakeId, {
       status: 'skipped',
-      notes: reason,
+      note: reason,
     })
   }
 
