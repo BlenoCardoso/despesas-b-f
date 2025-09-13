@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { X, Pill, Clock, User, Calendar, Package, Plus, Check, AlertTriangle, History } from 'lucide-react'
+import { X, Pill, Clock, User, Calendar, Package, Plus, Check, AlertTriangle, History, TrendingUp } from 'lucide-react'
 import { Medication } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { IntakeHistory } from './IntakeHistory'
+import { TreatmentProgress } from './TreatmentProgress'
 
 interface MedicationDetailsProps {
   medication: Medication | null
@@ -15,6 +16,7 @@ interface MedicationDetailsProps {
 export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake }: MedicationDetailsProps) {
   const [showIntakeForm, setShowIntakeForm] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
   const [intakeData, setIntakeData] = useState({
     dosage: '',
     time: new Date().toTimeString().slice(0, 5), // HH:MM format
@@ -87,11 +89,18 @@ export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake 
               Tomada Rápida
             </button>
             <button
+              onClick={() => setShowProgress(true)}
+              className="flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Progresso
+            </button>
+            <button
               onClick={() => setShowHistory(true)}
-              className="flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors col-span-2"
+              className="flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
             >
               <History className="h-4 w-4 mr-2" />
-              Ver Histórico de Tomadas
+              Histórico
             </button>
           </div>
 
@@ -290,6 +299,26 @@ export function MedicationDetails({ medication, isOpen, onClose, onRecordIntake 
           </button>
         </div>
       </div>
+
+      {/* Treatment Progress Modal */}
+      {medication && showProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Progresso do Tratamento</h2>
+              <button
+                onClick={() => setShowProgress(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <TreatmentProgress medication={medication} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Intake History Modal */}
       {medication && (

@@ -17,6 +17,7 @@ import { ptBR } from 'date-fns/locale'
 import { MedicationForm } from '../components/MedicationForm'
 import { MedicationDetails } from '../components/MedicationDetails'
 import { StockSummary } from '../components/StockSummary'
+import { NextDoseCard } from '../components/NextDoseCard'
 
 export function MedicationsPage() {
   const [searchText, setSearchText] = useState('')
@@ -324,6 +325,14 @@ ${notes ? `📝 Observações: ${notes}` : ''}`)
 
             {/* Main Content - Medications */}
             <div className="flex-1">
+              {/* Next Doses */}
+              {allMedications && (
+                <NextDoseCard 
+                  medications={allMedications} 
+                  onRecordIntake={handleRecordNewIntake}
+                />
+              )}
+              
               {/* Stock Summary */}
               {allMedications && <StockSummary medications={allMedications} />}
               

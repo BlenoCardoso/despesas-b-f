@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { X, Plus, Pill, Clock, Package, AlertTriangle } from 'lucide-react'
+import { X, Pill, Package, AlertTriangle } from 'lucide-react'
 import { useCreateMedication, useMedicationForms, useMedicationUnits } from '../hooks/useMedications'
 import { MedicationFormData } from '../types'
+import { IntervalSelector } from './IntervalSelector'
 
 interface MedicationFormProps {
   isOpen: boolean
@@ -39,7 +40,7 @@ export function MedicationForm({ isOpen, onClose }: MedicationFormProps) {
     isActive: true,
   })
 
-  const [timeInput, setTimeInput] = useState('')
+
 
   const createMedication = useCreateMedication()
   const { data: forms = [] } = useMedicationForms()
@@ -100,25 +101,10 @@ export function MedicationForm({ isOpen, onClose }: MedicationFormProps) {
       description: '',
       isActive: true,
     })
-    setTimeInput('')
+
   }
 
-  const addTime = () => {
-    if (timeInput && !formData.times.includes(timeInput)) {
-      setFormData(prev => ({
-        ...prev,
-        times: [...prev.times, timeInput].sort()
-      }))
-      setTimeInput('')
-    }
-  }
 
-  const removeTime = (timeToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      times: prev.times.filter(time => time !== timeToRemove)
-    }))
-  }
 
   const frequencyOptions = [
     { value: 'daily', label: 'Diário' },
@@ -242,46 +228,11 @@ export function MedicationForm({ isOpen, onClose }: MedicationFormProps) {
           </div>
 
           {/* Times */}
-          {formData.frequency !== 'as_needed' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Horários
-              </label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {formData.times.map((time, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
-                  >
-                    <Clock className="h-3 w-3 mr-1" />
-                    {time}
-                    <button
-                      type="button"
-                      onClick={() => removeTime(time)}
-                      className="ml-2 text-blue-600 hover:text-blue-800"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex space-x-2">
-                <input
-                  type="time"
-                  value={timeInput}
-                  onChange={(e) => setTimeInput(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={addTime}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
+          <IntervalSelector
+            frequency={formData.frequency}
+            times={formData.times}
+            onTimesChange={(times) => setFormData(prev => ({ ...prev, times }))}
+          />
 
           {/* Dates */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
