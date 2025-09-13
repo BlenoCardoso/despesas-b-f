@@ -274,6 +274,8 @@ export function useRecordDirectIntake() {
   })
 }
 
+
+
 // Utility hooks
 export function useMedicationForms() {
   return {
@@ -289,5 +291,23 @@ export function useMedicationUnits() {
     isLoading: false,
     error: null,
   }
+}
+
+export function useStopMedication() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ 
+      medicationId, 
+      reason 
+    }: { 
+      medicationId: string
+      reason?: string 
+    }) =>
+      medicationService.stopMedication(medicationId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationKeys.all })
+    },
+  })
 }
 

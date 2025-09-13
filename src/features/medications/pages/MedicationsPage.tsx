@@ -9,7 +9,9 @@ import {
   useOverdueIntakes,
   useRecordIntake,
   useSkipIntake,
-  useRecordDirectIntake
+  useRecordDirectIntake,
+  useStopMedication,
+  useDeleteMedication
 } from '../hooks/useMedications'
 import { Medication, MedicationIntake } from '../types'
 import { format } from 'date-fns'
@@ -27,6 +29,7 @@ export function MedicationsPage() {
   const [showMedicationForm, setShowMedicationForm] = useState(false)
   const [selectedMedication, setSelectedMedication] = useState<Medication | null>(null)
   const [showMedicationDetails, setShowMedicationDetails] = useState(false)
+  const [showInactiveMedications, setShowInactiveMedications] = useState(false)
 
   // Queries
   const { data: allMedications = [], isLoading: medicationsLoading } = useMedications()
@@ -40,6 +43,8 @@ export function MedicationsPage() {
   const recordIntakeMutation = useRecordIntake()
   const skipIntakeMutation = useSkipIntake()
   const recordDirectIntakeMutation = useRecordDirectIntake()
+  const stopMedicationMutation = useStopMedication()
+  const deleteMedicationMutation = useDeleteMedication()
 
   // Filter medications based on active filter
   const getFilteredMedications = () => {
@@ -61,9 +66,11 @@ export function MedicationsPage() {
     }
   }
 
-  const filteredMedications = getFilteredMedications().filter(med =>
-    searchText === '' || 
-    med.name.toLowerCase().includes(searchText.toLowerCase()) ||
+  const filteredMedications = getFilteredMedications()
+    .filter(med => showInactiveMedications || med.isActive)
+    .filter(med =>
+      searchText === '' || 
+      med.name.toLowerCase().includes(searchText.toLowerCase()) ||
     med.description?.toLowerCase().includes(searchText.toLowerCase()) ||
     med.prescribedBy?.toLowerCase().includes(searchText.toLowerCase())
   )
@@ -156,6 +163,43 @@ ${notes ? `📝 Observações: ${notes}` : ''}`)
     } catch (error) {
       console.error('Erro ao registrar tomada:', error)
       alert('❌ Erro ao registrar tomada. Tente novamente.')
+    }
+  }
+
+  const handleStopMedication = async (medicationId: string, reason?: string) => {
+    try {
+      await stopMedicationMutation.mutateAsync({ medicationId, reason })
+      
+      alert(`⏹️ Medicamento parado com sucesso!
+
+📋 Medicamento: ${selectedMedication?.name}
+📅 Data: ${new Date().toLocaleDateString('pt-BR')}
+${reason ? `📝 Motivo: ${reason}` : ''}
+
+ℹ️ O medicamento foi marcado como inativo e todas as doses futuras foram canceladas.`)
+
+      setShowMedicationDetails(false)
+    } catch (error) {
+      console.error('Erro ao parar medicamento:', error)
+      alert('❌ Erro ao parar medicamento. Tente novamente.')
+    }
+  }
+
+  const handleDeleteMedication = async (medicationId: string) => {
+    try {
+      await deleteMedicationMutation.mutateAsync(medicationId)
+      
+      alert(`🗑️ Medicamento excluído com sucesso!
+
+📋 Medicamento: ${selectedMedication?.name}
+📅 Data: ${new Date().toLocaleDateString('pt-BR')}
+
+⚠️ Todos os dados relacionados foram removidos permanentemente.`)
+
+      setShowMedicationDetails(false)
+    } catch (error) {
+      console.error('Erro ao excluir medicamento:', error)
+      alert('❌ Erro ao excluir medicamento. Tente novamente.')
     }
   }
 
@@ -254,6 +298,27 @@ ${notes ? `📝 Observações: ${notes}` : ''}`)
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white placeholder-gray-500"
                     />
                   </div>
+                </div>
+
+                {/* Show Inactive Toggle */}
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">
+                    Mostrar remédios parados
+                  </span>
+                  <button
+                    onClick={() => setShowInactiveMedications(!showInactiveMedications)}
+                    className={`
+                      relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                      ${showInactiveMedications ? 'bg-blue-600' : 'bg-gray-200'}
+                    `}
+                  >
+                    <span
+                      className={`
+                        inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                        ${showInactiveMedications ? 'translate-x-6' : 'translate-x-1'}
+                      `}
+                    />
+                  </button>
                 </div>
 
                 {/* Filter Options */}
@@ -361,14 +426,20 @@ ${notes ? `📝 Observações: ${notes}` : ''}`)
                     <div
                       key={medication.id}
                       onClick={() => handleOpenMedication(medication)}
-                      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+                      className={`
+                        bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer
+                        ${!medication.isActive 
+                          ? 'border-gray-200 opacity-75 bg-gray-50' 
+                          : 'border-gray-200'
+                        }
+                      `}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center space-x-2">
-                          <Pill className="h-5 w-5 text-blue-600" />
+                          <Pill className={`h-5 w-5 ${!medication.isActive ? 'text-gray-400' : 'text-blue-600'}`} />
                           {!medication.isActive && (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                              Inativo
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-medium">
+                              Parado
                             </span>
                           )}
                         </div>
@@ -585,6 +656,8 @@ ${notes ? `📝 Observações: ${notes}` : ''}`)
           setSelectedMedication(null)
         }}
         onRecordIntake={handleRecordNewIntake}
+        onStopMedication={handleStopMedication}
+        onDeleteMedication={handleDeleteMedication}
       />
     </div>
   )

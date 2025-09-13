@@ -65,6 +65,39 @@ export class MedicationService {
   }
 
   /**
+   * Stop a medication (mark as inactive)
+   */
+  async stopMedication(id: string, reason?: string): Promise<void> {
+    const medication = await db.medications.get(id)
+    if (!medication) {
+      throw new Error('Medication not found')
+    }
+
+    await db.medications.update(id, {
+      isActive: false,
+      endDate: new Date(),
+      description: medication.description 
+        ? `${medication.description}\n\n[PARADO EM ${new Date().toLocaleDateString('pt-BR')}]${reason ? ` - Motivo: ${reason}` : ''}`
+        : `[PARADO EM ${new Date().toLocaleDateString('pt-BR')}]${reason ? ` - Motivo: ${reason}` : ''}`,
+      updatedAt: new Date(),
+    })
+
+    // Mark all future intakes as skipped
+    const futureIntakes = await db.medicationIntakes
+      .where('medicationId')
+      .equals(id)
+      .and(intake => intake.dateTimePlanned > new Date())
+      .toArray()
+    
+    for (const intake of futureIntakes) {
+      await db.medicationIntakes.update(intake.id!, { 
+        status: 'skipped',
+        note: reason ? `Medicamento parado - ${reason}` : 'Medicamento parado'
+      })
+    }
+  }
+
+  /**
    * Delete a medication (soft delete)
    */
   async deleteMedication(id: string): Promise<void> {
