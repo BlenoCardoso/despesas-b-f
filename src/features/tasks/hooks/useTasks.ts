@@ -136,7 +136,7 @@ export function useCreateTask() {
     mutationFn: (data: TaskFormData) => 
       taskService.createTask(data, currentHousehold?.id || '', currentUser?.id || ''),
     onSuccess: () => {
-      // Invalidate and refetch task queries
+      // Invalidate and refetch all task queries including stats
       queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
@@ -152,6 +152,8 @@ export function useUpdateTask() {
       // Invalidate specific task and lists
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(id) })
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      // Invalidate stats to update counters
+      queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
@@ -162,7 +164,7 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: (id: string) => taskService.deleteTask(id),
     onSuccess: () => {
-      // Invalidate all task queries
+      // Invalidate all task queries including stats
       queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
@@ -177,6 +179,8 @@ export function useCompleteTask() {
       // Invalidate specific task and lists
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(id) })
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      // Invalidate stats to update counters
+      queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
@@ -190,6 +194,8 @@ export function useStartTask() {
       // Invalidate specific task and lists
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(id) })
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      // Invalidate stats to update counters
+      queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }

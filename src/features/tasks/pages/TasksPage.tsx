@@ -1,14 +1,29 @@
-import React, { useState } from 'react'
-import { Plus, Search, Filter, CheckCircle2, Clock, AlertTriangle, Calendar } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Search, CheckCircle2, Clock, AlertTriangle, Calendar } from 'lucide-react'
 import { TaskList } from '../components/TaskList'
+import { TaskForm } from '../components/TaskForm'
 import { useTasks, useTaskStats, useOverdueTasks, useTasksDueToday } from '../hooks/useTasks'
-import { Task, TaskFilter } from '../types'
+import { Task } from '../types'
+import { initializeTestData } from '@/core/utils/testData'
 
 export function TasksPage() {
   const [searchText, setSearchText] = useState('')
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed' | 'overdue' | 'today'>('all')
-  const [showFilters, setShowFilters] = useState(false)
+
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [showTaskForm, setShowTaskForm] = useState(false)
+
+  // Inicializar dados de teste
+  useEffect(() => {
+    initializeTestData()
+  }, [])
+
+  // Debug function - remover depois
+  const clearAllTasks = async () => {
+    const { db } = await import('@/core/db/database')
+    await db.tasks.clear()
+    window.location.reload()
+  }
 
   // Queries
   const { data: allTasks = [], isLoading: tasksLoading } = useTasks()
@@ -20,11 +35,11 @@ export function TasksPage() {
   const getFilteredTasks = () => {
     switch (activeFilter) {
       case 'pending':
-        return allTasks.filter(task => task.status === 'pendente')
+        return allTasks.filter(task => task.status === 'pendente' || (!task.status && !task.done))
       case 'in_progress':
         return allTasks.filter(task => task.status === 'em_progresso')
       case 'completed':
-        return allTasks.filter(task => task.status === 'concluida')
+        return allTasks.filter(task => task.status === 'concluida' || task.done)
       case 'overdue':
         return overdueTasks
       case 'today':
@@ -72,18 +87,21 @@ export function TasksPage() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Filtros
-              </button>
-              
-              <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Tarefa
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowTaskForm(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Tarefa
+                </button>
+                <button 
+                  onClick={clearAllTasks}
+                  className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -92,7 +110,7 @@ export function TasksPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar with Filters */}
-          <div className={`lg:w-64 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+          <div className="lg:w-64 block">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Filtros</h3>
               
@@ -105,7 +123,7 @@ export function TasksPage() {
                     placeholder="Buscar tarefas..."
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white placeholder-gray-500"
                   />
                 </div>
               </div>
@@ -194,7 +212,10 @@ export function TasksPage() {
             <TaskList
               tasks={filteredTasks}
               loading={tasksLoading}
-              onEdit={(task) => setSelectedTask(task)}
+              onEdit={(task) => {
+                setSelectedTask(task)
+                setShowTaskForm(true)
+              }}
               onView={(task) => setSelectedTask(task)}
               showAssignee={true}
               showDueDate={true}
@@ -214,7 +235,10 @@ export function TasksPage() {
                   }
                 </p>
                 {!searchText && (
-                  <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                  <button 
+                    onClick={() => setShowTaskForm(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Criar Primeira Tarefa
                   </button>
@@ -224,6 +248,17 @@ export function TasksPage() {
           </div>
         </div>
       </div>
+
+      {/* Task Form Modal */}
+      <TaskForm
+        isOpen={showTaskForm}
+        onClose={() => {
+          setShowTaskForm(false)
+          setSelectedTask(null)
+        }}
+        task={selectedTask || undefined}
+        mode={selectedTask ? 'edit' : 'create'}
+      />
     </div>
   )
 }

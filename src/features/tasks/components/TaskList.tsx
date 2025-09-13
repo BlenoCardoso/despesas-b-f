@@ -1,10 +1,8 @@
-import React from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { 
   CheckCircle2, 
   Circle, 
-  Clock, 
   AlertTriangle, 
   User, 
   Calendar,
@@ -81,9 +79,9 @@ export function TaskList({
 
   const getPriorityColor = (priority: Task['priority']) => {
     switch (priority) {
-      case 'alta': return 'text-red-600 bg-red-50'
-      case 'media': return 'text-yellow-600 bg-yellow-50'
-      case 'baixa': return 'text-green-600 bg-green-50'
+      case 'high': return 'text-red-600 bg-red-50'
+      case 'medium': return 'text-yellow-600 bg-yellow-50'
+      case 'low': return 'text-green-600 bg-green-50'
       default: return 'text-gray-600 bg-gray-50'
     }
   }
@@ -168,8 +166,8 @@ export function TaskList({
                     inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                     ${getPriorityColor(task.priority)}
                   `}>
-                    {task.priority === 'alta' ? 'Alta' : 
-                     task.priority === 'media' ? 'Média' : 'Baixa'}
+                    {task.priority === 'high' ? 'Alta' : 
+                     task.priority === 'medium' ? 'Média' : 'Baixa'}
                   </span>
 
                   {/* Overdue Warning */}
@@ -209,19 +207,10 @@ export function TaskList({
                     </div>
                   )}
 
-                  {/* Category */}
-                  {task.category && (
-                    <span className="bg-gray-100 px-2 py-1 rounded text-xs">
-                      {task.category}
-                    </span>
-                  )}
-
-                  {/* Attachments */}
-                  {task.attachments && task.attachments.length > 0 && (
-                    <span className="text-blue-600">
-                      📎 {task.attachments.length}
-                    </span>
-                  )}
+                  {/* Status Badge */}
+                  <span className="capitalize">
+                    {task.status.replace('_', ' ')}
+                  </span>
                 </div>
 
                 {/* Tags */}

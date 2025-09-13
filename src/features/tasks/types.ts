@@ -2,20 +2,39 @@ import { BaseEntity } from '@/types/global'
 
 export interface Task extends BaseEntity {
   title: string
+  description?: string
   dueDate?: Date
   done: boolean
+  status: 'pendente' | 'em_progresso' | 'concluida'
   notes?: string
   tags: string[]
   priority: 'low' | 'medium' | 'high'
   completedAt?: Date
+  assignedTo?: string
+  category?: string
+  attachments: TaskAttachment[]
+  recurrence?: string
+}
+
+export interface TaskAttachment {
+  id: string
+  fileName: string
+  mimeType: string
+  size: number
+  blobRef: string
 }
 
 export interface TaskFormData {
   title: string
+  description?: string
   dueDate?: Date
   notes?: string
   tags: string[]
   priority: 'low' | 'medium' | 'high'
+  assignedTo?: string
+  category?: string
+  attachments?: File[]
+  recurrence?: string
 }
 
 export interface TaskFilter {
