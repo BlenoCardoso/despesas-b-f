@@ -12,6 +12,7 @@ import { DocumentsPage } from './features/docs/pages/DocumentsPage'
 import { CalendarPage } from './features/calendar/pages/CalendarPage'
 import { MedicationsPage } from './features/medications/pages/MedicationsPage'
 import { ReportsPage } from './features/reports/pages/ReportsPage'
+import { SettingsPage } from './features/settings/pages/SettingsPage'
 import { useAppStore } from './core/store'
 import { db } from './core/db/database'
 import { categoryService } from './features/expenses/services/categoryService'
@@ -102,7 +103,7 @@ function App() {
                 <Route path="medications" element={<MedicationsPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="reports" element={<ReportsPage />} />
-                <Route path="settings" element={<SettingsPlaceholder />} />
+                <Route path="settings" element={<SettingsPage />} />
               </Route>
             </Routes>
           </div>
@@ -123,14 +124,6 @@ function App() {
   )
 }
 
-// Placeholder components for features not yet implemented
-function SettingsPlaceholder() {
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-4">Configurações</h1>
-      <p className="text-gray-600">Módulo de configurações em desenvolvimento...</p>
-    </div>
-  )
-}
+
 
 export default App
