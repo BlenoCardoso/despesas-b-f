@@ -4,21 +4,24 @@ export interface Document extends BaseEntity {
   title: string
   fileName: string
   mimeType: string
-  size: number
+  fileSize: number // Consistente com documentService
+  fileUrl: string
   blobRef: string // referência para IndexedDB
   tags: string[]
   expiryDate?: Date
   description?: string
   category: string
+  isImportant?: boolean
 }
 
 export interface DocumentFormData {
   title: string
-  file: File
+  file?: File
   tags: string[]
   expiryDate?: Date
   description?: string
   category: string
+  isImportant?: boolean
 }
 
 export interface DocumentFilter {
