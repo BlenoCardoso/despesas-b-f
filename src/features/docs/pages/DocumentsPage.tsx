@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Search, Filter, FileText, Star, AlertTriangle, Calendar, Download } from 'lucide-react'
-import { useDocuments, useDocumentStats, useImportantDocuments, useExpiredDocuments } from '../hooks/useDocuments'
+import { useDocuments, useDocumentStats, useImportantDocuments, useExpiredDocuments, useDownloadDocument, useDocumentBlob } from '../hooks/useDocuments'
 import { Document } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -17,6 +17,7 @@ export function DocumentsPage() {
   const { data: stats } = useDocumentStats()
   const { data: importantDocs = [] } = useImportantDocuments()
   const { data: expiredDocs = [] } = useExpiredDocuments()
+  const downloadDocument = useDownloadDocument()
 
   // Filter documents based on active filter
   const getFilteredDocuments = () => {
@@ -84,6 +85,43 @@ export function DocumentsPage() {
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
     return expiryDate >= now && expiryDate <= thirtyDaysFromNow
+  }
+
+  const handleDownloadDocument = async (doc: Document) => {
+    try {
+      await downloadDocument.mutateAsync(doc.id)
+    } catch (error) {
+      console.error('Erro ao baixar documento:', error)
+      alert('Erro ao baixar o documento')
+    }
+  }
+
+  const handleOpenDocument = async (doc: Document) => {
+    try {
+      if (!doc.blobRef) {
+        alert('Arquivo não encontrado')
+        return
+      }
+
+      // Buscar o blob do IndexedDB
+      const { db } = await import('@/core/db/database')
+      const blob = await db.getBlob(doc.blobRef)
+      
+      if (!blob) {
+        alert('Arquivo não encontrado')
+        return
+      }
+
+      // Criar URL temporária e abrir
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      
+      // Limpar a URL após um tempo
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      console.error('Erro ao abrir documento:', error)
+      alert('Erro ao abrir o documento')
+    }
   }
 
   return (
@@ -243,6 +281,7 @@ export function DocumentsPage() {
                 {filteredDocuments.map((doc) => (
                   <div
                     key={doc.id}
+                    onClick={() => handleOpenDocument(doc)}
                     className={`
                       bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer
                       ${isExpired(doc) ? 'border-red-200 bg-red-50' : ''}
@@ -263,7 +302,14 @@ export function DocumentsPage() {
                         )}
                       </div>
                       
-                      <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDownloadDocument(doc)
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="Baixar documento"
+                      >
                         <Download className="h-4 w-4" />
                       </button>
                     </div>

@@ -270,24 +270,25 @@ export class DocumentService {
    * Download document
    */
   async downloadDocument(id: string): Promise<void> {
-    const document = await this.getDocumentById(id)
-    if (!document || !document.blobRef) {
+    const doc = await this.getDocumentById(id)
+    if (!doc || !doc.blobRef) {
       throw new Error('Document not found or no file attached')
     }
 
-    const blob = await this.getDocumentBlob(document.blobRef)
+    const blob = await this.getDocumentBlob(doc.blobRef)
     if (!blob) {
       throw new Error('File not found')
     }
 
     // Create download link
     const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
+    const link = window.document.createElement('a')
     link.href = url
-    link.download = document.fileName
-    document.body.appendChild(link)
+    link.download = doc.fileName
+    link.style.display = 'none'
+    window.document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
+    window.document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }
 
