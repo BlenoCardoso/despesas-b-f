@@ -21,33 +21,47 @@ export interface MedicationStock {
 }
 
 export interface MedicationIntake {
-  id: string
+  id?: string
   medicationId: string
   dateTimePlanned: Date
   dateTimeTaken?: Date
-  status: 'tomado' | 'atrasado' | 'pulado'
+  status: 'pending' | 'taken' | 'skipped'
+  dosageTaken: number
   note?: string
+  medication: Medication
 }
 
 export interface Medication extends BaseEntity {
   name: string
-  dosage: Dosage
-  form: 'comprimido' | 'capsula' | 'xarope' | 'spray' | 'injecao' | string
-  instructions?: string
-  schedule: MedicationSchedule
-  asNeeded?: boolean
-  stock?: MedicationStock
-  history: MedicationIntake[]
+  dosage: number
+  unit: string
+  form: string
+  frequency: 'daily' | 'weekly' | 'monthly' | 'as_needed'
+  times: string[]
+  startDate: Date
+  endDate?: Date
+  stockQuantity: number
+  lowStockThreshold: number
+  prescribedBy?: string
+  description?: string
+  isActive: boolean
+  tags?: string[]
 }
 
 export interface MedicationFormData {
   name: string
-  dosage: Dosage
+  dosage: number
+  unit: string
   form: string
-  instructions?: string
-  schedule: MedicationSchedule
-  asNeeded?: boolean
-  stock?: MedicationStock
+  frequency: 'daily' | 'weekly' | 'monthly' | 'as_needed'
+  times: string[]
+  startDate: Date
+  endDate?: Date
+  stockQuantity: number
+  lowStockThreshold: number
+  prescribedBy?: string
+  description?: string
+  isActive: boolean
 }
 
 export interface MedicationReminder {

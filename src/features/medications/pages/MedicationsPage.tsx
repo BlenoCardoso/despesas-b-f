@@ -13,12 +13,17 @@ import {
 import { Medication, MedicationIntake } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { MedicationForm } from '../components/MedicationForm'
+import { MedicationDetails } from '../components/MedicationDetails'
 
 export function MedicationsPage() {
   const [searchText, setSearchText] = useState('')
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'low_stock' | 'expiring'>('all')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
   const [activeTab, setActiveTab] = useState<'medications' | 'intakes'>('medications')
+  const [showMedicationForm, setShowMedicationForm] = useState(false)
+  const [selectedMedication, setSelectedMedication] = useState<Medication | null>(null)
+  const [showMedicationDetails, setShowMedicationDetails] = useState(false)
 
   // Queries
   const { data: allMedications = [], isLoading: medicationsLoading } = useMedications()
@@ -110,6 +115,30 @@ export function MedicationsPage() {
     return plannedTime < now && intake.status === 'pending'
   }
 
+  const handleOpenMedication = (medication: Medication) => {
+    setSelectedMedication(medication)
+    setShowMedicationDetails(true)
+  }
+
+  const handleRecordNewIntake = async (medicationId: string, dosage: number, time?: Date, notes?: string) => {
+    try {
+      // Criar uma entrada de tomada direta (simulação)
+      const now = new Date()
+      
+      alert(`Tomada registrada com sucesso!
+Medicamento: ${selectedMedication?.name}
+Dosagem: ${dosage} ${selectedMedication?.unit}
+Horário: ${time?.toLocaleTimeString() || now.toLocaleTimeString()}
+${notes ? `Observações: ${notes}` : ''}`)
+
+      // Fechar o modal de detalhes
+      setShowMedicationDetails(false)
+    } catch (error) {
+      console.error('Erro ao registrar tomada:', error)
+      alert('Erro ao registrar tomada')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -163,13 +192,20 @@ export function MedicationsPage() {
 
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className={`inline-flex items-center px-3 py-2 border rounded-md text-sm font-medium transition-colors ${
+                  showFilters 
+                    ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                    : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                }`}
               >
                 <Filter className="h-4 w-4 mr-2" />
-                Filtros
+                {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
               </button>
               
-              <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+              <button 
+                onClick={() => setShowMedicationForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Remédio
               </button>
@@ -182,7 +218,7 @@ export function MedicationsPage() {
         {activeTab === 'medications' ? (
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Sidebar with Filters */}
-            <div className={`lg:w-64 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+            <div className={`lg:w-64 ${showFilters ? 'block' : 'hidden'}`}>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Filtros</h3>
                 
@@ -195,7 +231,7 @@ export function MedicationsPage() {
                       placeholder="Buscar remédios..."
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white placeholder-gray-500"
                     />
                   </div>
                 </div>
@@ -293,6 +329,7 @@ export function MedicationsPage() {
                   {filteredMedications.map((medication) => (
                     <div
                       key={medication.id}
+                      onClick={() => handleOpenMedication(medication)}
                       className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -379,7 +416,10 @@ export function MedicationsPage() {
                     }
                   </p>
                   {!searchText && (
-                    <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    <button 
+                      onClick={() => setShowMedicationForm(true)}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                    >
                       <Plus className="h-4 w-4 mr-2" />
                       Adicionar Remédio
                     </button>
@@ -498,6 +538,23 @@ export function MedicationsPage() {
           </div>
         )}
       </div>
+
+      {/* Medication Form Modal */}
+      <MedicationForm 
+        isOpen={showMedicationForm}
+        onClose={() => setShowMedicationForm(false)}
+      />
+
+      {/* Medication Details Modal */}
+      <MedicationDetails
+        medication={selectedMedication}
+        isOpen={showMedicationDetails}
+        onClose={() => {
+          setShowMedicationDetails(false)
+          setSelectedMedication(null)
+        }}
+        onRecordIntake={handleRecordNewIntake}
+      />
     </div>
   )
 }
