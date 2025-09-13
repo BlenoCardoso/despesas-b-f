@@ -12,11 +12,18 @@ import {
   Settings,
   Menu,
   User,
-  Home
+  Home,
+  Zap
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentHousehold } from '@/core/store'
 import { NotificationButton } from '@/features/notifications/components/NotificationButton'
+import { GlobalSearch } from './GlobalSearch'
+import { ErrorBoundary } from './ErrorBoundary'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { ConnectivityStatus } from './ConnectivityStatus'
+import { ThemeToggle } from './ThemeToggle'
+import { NotificationCenter } from './NotificationCenter'
 
 const navigation = [
   {
@@ -66,27 +73,38 @@ const navigation = [
 export function Layout() {
   const location = useLocation()
   const currentHousehold = useCurrentHousehold()
+  
+  // Ativar atalhos de teclado globais
+  useKeyboardShortcuts()
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Connectivity Status */}
+      <ConnectivityStatus />
+      
       {/* Sidebar */}
       <div className="hidden md:flex md:w-64 md:flex-col">
         <div className="flex flex-col flex-grow pt-5 overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
           {/* Logo/Brand */}
           <div className="flex items-center flex-shrink-0 px-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
                 <Home className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Despesas
+                <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Despesas B&F
                 </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                   {currentHousehold?.name || 'Carregando...'}
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="px-4 mt-4">
+            <GlobalSearch />
           </div>
 
           {/* Navigation */}
@@ -129,8 +147,9 @@ export function Layout() {
           </nav>
 
           {/* User section */}
-          <div className="flex-shrink-0 flex border-t border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center gap-3 w-full">
+          <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            {/* User info */}
+            <div className="flex items-center gap-3 p-4">
               <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
                 <User className="h-4 w-4 text-gray-600 dark:text-gray-300" />
               </div>
@@ -141,6 +160,14 @@ export function Layout() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   usuario@exemplo.com
                 </p>
+              </div>
+            </div>
+            
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-4 pb-4">
+              <div className="flex items-center space-x-2">
+                <ThemeToggle />
+                <NotificationCenter />
               </div>
               <NotificationButton />
             </div>
@@ -172,7 +199,9 @@ export function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
