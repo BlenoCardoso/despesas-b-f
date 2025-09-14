@@ -390,17 +390,20 @@ export function ExpensesPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <div className="container-responsive space-responsive min-h-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Despesas</h1>
-          <p className="text-gray-600">
+      <div className="flex-responsive items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white truncate">
+            Despesas
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
             {format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR })}
           </p>
         </div>
         
-        <div className="flex items-center gap-2">
+        {/* Desktop Actions */}
+        <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
           <Button 
             variant="outline" 
             size="sm" 
@@ -433,6 +436,28 @@ export function ExpensesPage() {
             Nova Despesa
           </Button>
         </div>
+
+        {/* Mobile Actions */}
+        <div className="flex lg:hidden items-center gap-2 flex-shrink-0">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleViewReports}
+            className="px-2 touch-target"
+          >
+            <TrendingUp className="h-4 w-4" />
+            <span className="sr-only">Relatórios</span>
+          </Button>
+          
+          <Button 
+            onClick={() => setShowExpenseForm(true)}
+            size="sm"
+            className="touch-target"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Nova</span>
+          </Button>
+        </div>
       </div>
 
       {/* Demo do Visualizador de Anexos - Remover após teste */}
@@ -445,32 +470,33 @@ export function ExpensesPage() {
       />
 
       {/* Search and Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="relative flex-1 order-2 sm:order-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Buscar despesas..."
             value={searchText}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
-            className="pl-10"
+            className="pl-10 no-zoom touch-target"
           />
         </div>
         
-        <Sheet open={showFilters} onOpenChange={setShowFilters}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="relative">
-              <Filter className="h-4 w-4 mr-2" />
-              Filtros
-              {activeFilterCount > 0 && (
-                <Badge 
-                  variant="destructive" 
-                  className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
-                >
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-          </SheetTrigger>
+        <div className="flex items-center gap-2 order-1 sm:order-2 flex-shrink-0">
+          <Sheet open={showFilters} onOpenChange={setShowFilters}>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="relative touch-target flex-1 sm:flex-none">
+                <Filter className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Filtros</span>
+                {activeFilterCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                  >
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            </SheetTrigger>
           <SheetContent className="flex flex-col h-full">
             <SheetHeader className="shrink-0">
               <SheetTitle>Filtros</SheetTitle>
@@ -490,10 +516,13 @@ export function ExpensesPage() {
           </SheetContent>
         </Sheet>
 
-        <Button variant="outline" size="sm">
-          <Calendar className="h-4 w-4 mr-2" />
-          {format(currentMonth, "MMM yyyy", { locale: ptBR })}
-        </Button>
+          <Button variant="outline" size="sm" className="touch-target">
+            <Calendar className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">
+              {format(currentMonth, "MMM yyyy", { locale: ptBR })}
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Active Filters */}

@@ -116,5 +116,155 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 16px; /* Base font size for accessibility */
+    line-height: 1.5;
+  }
+
+  /* Responsive Typography */
+  html {
+    font-size: 16px;
+  }
+  
+  @media (max-width: 768px) {
+    html {
+      font-size: 14px;
+    }
+  }
+  
+  @media (min-width: 1200px) {
+    html {
+      font-size: 18px;
+    }
+  }
+}
+
+@layer utilities {
+  /* Container responsivo personalizado */
+  .container-responsive {
+    @apply w-full mx-auto px-4 sm:px-6 lg:px-8;
+    max-width: 100%;
+  }
+  
+  @screen sm {
+    .container-responsive {
+      max-width: 640px;
+    }
+  }
+  
+  @screen md {
+    .container-responsive {
+      max-width: 768px;
+    }
+  }
+  
+  @screen lg {
+    .container-responsive {
+      max-width: 1024px;
+    }
+  }
+  
+  @screen xl {
+    .container-responsive {
+      max-width: 1280px;
+    }
+  }
+  
+  @screen 2xl {
+    .container-responsive {
+      max-width: 1536px;
+    }
+  }
+
+  /* Text responsivo */
+  .text-responsive {
+    @apply text-sm md:text-base lg:text-lg;
+  }
+  
+  .text-responsive-sm {
+    @apply text-xs md:text-sm;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg md:text-xl lg:text-2xl;
+  }
+
+  /* Spacing responsivo */
+  .space-responsive {
+    @apply space-y-2 md:space-y-4 lg:space-y-6;
+  }
+  
+  .p-responsive {
+    @apply p-2 md:p-4 lg:p-6;
+  }
+  
+  .m-responsive {
+    @apply m-2 md:m-4 lg:m-6;
+  }
+
+  /* Grid responsivo */
+  .grid-responsive {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+  }
+  
+  .grid-responsive-wide {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4;
+  }
+
+  /* Flex responsivo */
+  .flex-responsive {
+    @apply flex flex-col md:flex-row gap-4;
+  }
+
+  /* Cards responsivos */
+  .card-responsive {
+    @apply w-full max-w-none sm:max-w-sm md:max-w-md lg:max-w-lg;
+  }
+
+  /* Botões responsivos */
+  .btn-responsive {
+    @apply px-3 py-2 text-sm md:px-4 md:py-2 md:text-base;
+  }
+
+  /* Hidden/Show responsivo */
+  .mobile-only {
+    @apply block md:hidden;
+  }
+  
+  .desktop-only {
+    @apply hidden md:block;
+  }
+  
+  .tablet-up {
+    @apply hidden sm:block;
+  }
+
+  /* Touch targets para mobile */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Scrolling suave */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent zoom on input focus (iOS) */
+  .no-zoom {
+    font-size: 16px;
+  }
+  
+  @media (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="number"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 }

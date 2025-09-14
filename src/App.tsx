@@ -93,7 +93,7 @@ function App() {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       <QueryClientProvider client={queryClient}>
         <Router>
-          <div className="min-h-screen bg-background text-foreground">
+          <div className="min-h-screen-safe bg-background text-foreground safe-area-insets overflow-x-hidden">
             <Routes>
               <Route path="/" element={<Layout />}>
                 <Route index element={<Navigate to="/expenses" replace />} />
@@ -116,6 +116,9 @@ function App() {
           position="top-right"
           richColors
           closeButton
+          toastOptions={{
+            className: 'touch:text-base text-sm',
+          }}
         />
         
         <ReactQueryDevtools initialIsOpen={false} />
