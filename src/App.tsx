@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import { ThemeProvider } from 'next-themes'
 import { Layout } from './components/Layout'
 import { InstallPrompt } from './components/PWAStatus'
+import ProtectedRoute from './components/ProtectedRoute'
 import { ExpensesPage } from './features/expenses/pages/ExpensesPage'
 import { TasksPage } from './features/tasks/pages/TasksPage'
 import { DocumentsPage } from './features/docs/pages/DocumentsPage'
@@ -13,6 +14,9 @@ import { CalendarPage } from './features/calendar/pages/CalendarPage'
 import { MedicationsPage } from './features/medications/pages/MedicationsPage'
 import { ReportsPage } from './features/reports/pages/ReportsPage'
 import { SettingsPage } from './features/settings/pages/SettingsPage'
+import FirebaseTest from './debug/FirebaseTest'
+import SimpleFirebaseTest from './debug/SimpleFirebaseTest'
+import ConfigChecker from './debug/ConfigChecker'
 import { useAppStore } from './core/store'
 import { db } from './core/db/database'
 import { categoryService } from './features/expenses/services/categoryService'
@@ -95,16 +99,28 @@ function App() {
         <Router>
           <div className="min-h-screen-safe bg-background text-foreground safe-area-insets overflow-x-hidden">
             <Routes>
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Navigate to="/expenses" replace />} />
-                <Route path="expenses" element={<ExpensesPage />} />
-                <Route path="tasks" element={<TasksPage />} />
-                <Route path="documents" element={<DocumentsPage />} />
-                <Route path="medications" element={<MedicationsPage />} />
-                <Route path="calendar" element={<CalendarPage />} />
-                <Route path="reports" element={<ReportsPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-              </Route>
+              {/* Rotas de debug - sem autenticação */}
+              <Route path="/debug" element={<FirebaseTest />} />
+              <Route path="/test" element={<SimpleFirebaseTest />} />
+              <Route path="/config" element={<ConfigChecker />} />
+              
+              {/* Rotas protegidas */}
+              <Route path="/*" element={
+                <ProtectedRoute>
+                  <Routes>
+                    <Route path="/" element={<Layout />}>
+                      <Route index element={<Navigate to="/expenses" replace />} />
+                      <Route path="expenses" element={<ExpensesPage />} />
+                      <Route path="tasks" element={<TasksPage />} />
+                      <Route path="documents" element={<DocumentsPage />} />
+                      <Route path="medications" element={<MedicationsPage />} />
+                      <Route path="calendar" element={<CalendarPage />} />
+                      <Route path="reports" element={<ReportsPage />} />
+                      <Route path="settings" element={<SettingsPage />} />
+                    </Route>
+                  </Routes>
+                </ProtectedRoute>
+              } />
             </Routes>
           </div>
         </Router>
