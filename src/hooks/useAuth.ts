@@ -19,7 +19,20 @@ export const useAuth = (): UseAuthReturn => {
     // Verificar se já existe um usuário logado
     const currentUser = authService.getCurrentUser();
     setUser(currentUser);
-    setIsLoading(false);
+    
+    // Se já tem usuário, não precisa carregar
+    if (currentUser) {
+      setIsLoading(false);
+    } else {
+      // Se não tem usuário, verificar se Firebase tem estado de auth
+      setTimeout(() => {
+        const fbUser = authService.getFirebaseUser();
+        if (fbUser || authService.getCurrentUser()) {
+          setUser(authService.getCurrentUser());
+        }
+        setIsLoading(false);
+      }, 500); // Pequeno delay para Firebase inicializar
+    }
 
     // Como o AuthService já gerencia o estado interno via Firebase onAuthStateChanged,
     // vamos verificar periodicamente por mudanças
@@ -28,7 +41,7 @@ export const useAuth = (): UseAuthReturn => {
       if (updatedUser !== user) {
         setUser(updatedUser);
       }
-    }, 1000);
+    }, 2000); // Reduzido de 1000ms para menos checagens
 
     return () => {
       clearInterval(interval);

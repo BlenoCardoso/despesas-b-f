@@ -39,7 +39,7 @@ if (Capacitor.isNativePlatform()) {
   GoogleAuth.initialize({
     clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
-    grantOfflineAccess: true
+    grantOfflineAccess: false // Otimizado para melhor UX
   }).then(() => {
     console.log('Google Auth initialized successfully');
   }).catch((error) => {

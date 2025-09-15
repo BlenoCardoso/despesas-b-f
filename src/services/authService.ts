@@ -95,14 +95,17 @@ export class AuthService {
         console.log('Verificando inicialização do GoogleAuth...');
         
         try {
-          // Usar a mesma configuração que funcionou no teste
+          // Configuração otimizada para melhor UX
           await GoogleAuth.initialize({
             clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleusercontent.com',
             scopes: ['profile', 'email'],
-            grantOfflineAccess: true
+            grantOfflineAccess: false, // Mudado para false para reduzir prompts
           });
-          
+
+          // Fazer login normal mas com configurações otimizadas para melhor UX
+          console.log('Fazendo login com Google...');
           const googleUser = await GoogleAuth.signIn();
+          
           console.log('Google User recebido:', {
             id: googleUser.id,
             email: googleUser.email,
