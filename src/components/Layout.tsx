@@ -13,7 +13,8 @@ import {
   Menu,
   User,
   Home,
-  Zap
+  Zap,
+  LogOut
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentHousehold } from '@/core/store'
@@ -24,6 +25,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { ConnectivityStatus } from './ConnectivityStatus'
 import { ThemeToggle } from './ThemeToggle'
 import { NotificationCenter } from './NotificationCenter'
+import { useAuth } from '@/hooks/useAuth'
 
 const navigation = [
   {
@@ -73,10 +75,20 @@ const navigation = [
 export function Layout() {
   const location = useLocation()
   const currentHousehold = useCurrentHousehold()
+  const { user, signOut } = useAuth()
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
   
   // Ativar atalhos de teclado globais
   useKeyboardShortcuts()
+
+  // Função para fazer logout
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error)
+    }
+  }
 
   // Fechar sidebar mobile ao navegar
   React.useEffect(() => {
@@ -156,17 +168,34 @@ export function Layout() {
           <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
             {/* User info */}
             <div className="flex items-center gap-3 p-4">
-              <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                <User className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-              </div>
+              {user?.avatarUrl ? (
+                <img 
+                  src={user.avatarUrl} 
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                  <User className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  Usuário
+                  {user?.name || 'Usuário'}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  usuario@exemplo.com
+                  {user?.email || 'usuario@exemplo.com'}
                 </p>
               </div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleLogout}
+                className="p-1 h-6 w-6 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
+                title="Sair"
+              >
+                <LogOut className="h-3 w-3" />
+              </Button>
             </div>
             
             {/* Toolbar */}
@@ -268,17 +297,34 @@ export function Layout() {
           {/* Mobile User Section */}
           <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                <User className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-              </div>
+              {user?.avatarUrl ? (
+                <img 
+                  src={user.avatarUrl} 
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                  <User className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  Usuário
+                  {user?.name || 'Usuário'}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  usuario@exemplo.com
+                  {user?.email || 'usuario@exemplo.com'}
                 </p>
               </div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleLogout}
+                className="p-1 h-6 w-6 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
+                title="Sair"
+              >
+                <LogOut className="h-3 w-3" />
+              </Button>
             </div>
             
             <div className="flex items-center justify-between">

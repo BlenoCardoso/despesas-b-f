@@ -37,7 +37,7 @@ export const storage = getStorage(app);
 if (Capacitor.isNativePlatform()) {
   console.log('Initializing Google Auth for native platform');
   GoogleAuth.initialize({
-    clientId: '958999401996-4on39pe19b7q368takvbmu5i2csuq8e3.apps.googleusercontent.com',
+    clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
     grantOfflineAccess: true
   }).then(() => {

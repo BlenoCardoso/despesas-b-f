@@ -97,7 +97,7 @@ export class AuthService {
         try {
           // Usar a mesma configuração que funcionou no teste
           await GoogleAuth.initialize({
-            clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleauth.com',
+            clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleusercontent.com',
             scopes: ['profile', 'email'],
             grantOfflineAccess: true
           });
