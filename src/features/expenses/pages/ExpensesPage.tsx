@@ -36,21 +36,15 @@ import { ExpenseForm } from '../components/ExpenseForm'
 import { AttachmentViewer } from '@/components/AttachmentViewer'
 import { AttachmentViewerDemo } from '@/components/AttachmentViewerDemo'
 import { ExpenseFiltersForm } from '../components/ExpenseFiltersForm'
+import { useFirebaseExpenses } from '@/hooks/useFirebaseExpenses'
+import { useFirebaseHousehold } from '@/hooks/useFirebaseHousehold'
 import { 
-  useExpenses, 
-  useFilteredExpenses,
-  useMonthlyExpenses,
   useCategories,
   useBudgetSummary,
-  useCreateExpense,
-  useUpdateExpense,
-  useDeleteExpense,
-  useDuplicateExpense
 } from '../hooks/useExpenses'
-import { useCurrentHousehold } from '@/core/store'
 import { Expense, ExpenseFilter } from '../types'
 import { Attachment } from '@/types/global'
-import { calculateDailyAverage, calculateMonthlyProjection, calculateMonthlyVariation } from '@/core/utils/calculations'
+
 import { formatCurrency } from '@/core/utils/formatters'
 import { toast } from 'sonner'
 import { useExportReport } from '@/features/reports/hooks/useReports'
@@ -64,33 +58,59 @@ export function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
-  const currentHousehold = useCurrentHousehold()
-  const currentMonthStr = format(currentMonth, 'yyyy-MM')
   const navigate = useNavigate()
   const exportReport = useExportReport()
 
-  // Queries
+  // Firebase hooks
+  const { currentHousehold } = useFirebaseHousehold()
+  const { 
+    expenses: monthlyExpenses, 
+    loading: expensesLoading, 
+    createExpense, 
+    updateExpense, 
+    deleteExpense 
+  } = useFirebaseExpenses(currentHousehold?.id)
+
+  // Queries locais ainda funcionais
   const { data: categories = [] } = useCategories()
-  const { data: budgetSummary } = useBudgetSummary(currentMonthStr)
-  
-  // Use filtered expenses hook
-  const { data: filteredExpenses = [], isLoading: expensesLoading } = useFilteredExpenses(
-    {
-      ...activeFilters,
-      startDate: startOfMonth(currentMonth),
-      endDate: endOfMonth(currentMonth)
-    },
-    searchText
-  )
+  const { data: budgetSummary } = useBudgetSummary(format(currentMonth, 'yyyy-MM'))
 
-  // Mutations
-  const createExpenseMutation = useCreateExpense()
-  const updateExpenseMutation = useUpdateExpense()
-  const deleteExpenseMutation = useDeleteExpense()
-  const duplicateExpenseMutation = useDuplicateExpense()
+  // Filtrar expenses localmente por enquanto
+  const filteredExpenses = useMemo(() => {
+    let filtered = monthlyExpenses
 
-  // Keep for backward compatibility - remove the old filtering logic
-  const monthlyExpenses = filteredExpenses
+    // Search filter
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase()
+      filtered = filtered.filter(expense => 
+        expense.description?.toLowerCase().includes(search) ||
+        categories.find(cat => cat.id === expense.category)?.name.toLowerCase().includes(search)
+      )
+    }
+
+    // Additional filters
+    if (activeFilters.categoryIds?.length) {
+      filtered = filtered.filter(expense => 
+        activeFilters.categoryIds!.includes(expense.category)
+      )
+    }
+
+    if (activeFilters.paymentMethods?.length) {
+      filtered = filtered.filter(expense => 
+        activeFilters.paymentMethods!.includes(expense.paymentMethod as any)
+      )
+    }
+
+    if (activeFilters.minAmount !== undefined) {
+      filtered = filtered.filter(expense => expense.amount >= activeFilters.minAmount!)
+    }
+
+    if (activeFilters.maxAmount !== undefined) {
+      filtered = filtered.filter(expense => expense.amount <= activeFilters.maxAmount!)
+    }
+
+    return filtered
+  }, [monthlyExpenses, searchText, activeFilters, categories])
 
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
@@ -147,11 +167,13 @@ export function ExpensesPage() {
 
   // Calculate summary data
   const summaryData = useMemo(() => {
-    const totalMonth = monthlyExpenses.reduce((sum, expense) => sum + expense.amount, 0)
+    const totalMonth = monthlyExpenses.reduce((sum: number, expense: any) => sum + expense.amount, 0)
     const budget = budgetSummary?.totalBudget || 0
     const remaining = Math.max(0, budget - totalMonth)
-    const dailyAverage = calculateDailyAverage(monthlyExpenses, currentMonth)
-    const projection = calculateMonthlyProjection(monthlyExpenses, currentMonth)
+    
+    // Cálculo simplificado por enquanto
+    const dailyAverage = totalMonth / new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate()
+    const projection = dailyAverage * 30
     
     // Calculate variation from last month (mock data for now)
     const variationFromLastMonth = 0 // TODO: Implement actual calculation
@@ -182,8 +204,17 @@ export function ExpensesPage() {
 
   // Handlers
   const handleCreateExpense = async (data: any) => {
+    if (!currentHousehold?.id) {
+      toast.error('Nenhum household selecionado');
+      return;
+    }
+
     try {
-      await createExpenseMutation.mutateAsync(data)
+      await createExpense({
+        ...data,
+        householdId: currentHousehold.id,
+        createdBy: 'current-user-id' // TODO: pegar do contexto de auth
+      });
       setShowExpenseForm(false)
       toast.success('Despesa criada com sucesso!')
     } catch (error) {
@@ -195,7 +226,7 @@ export function ExpensesPage() {
     if (!editingExpense) return
     
     try {
-      await updateExpenseMutation.mutateAsync({ id: editingExpense.id, data })
+      await updateExpense(editingExpense.id, data)
       setEditingExpense(null)
       toast.success('Despesa atualizada com sucesso!')
     } catch (error) {
@@ -203,20 +234,25 @@ export function ExpensesPage() {
     }
   }
 
-  const handleDeleteExpense = async (expense: Expense) => {
+  const handleDeleteExpense = async (expense: any) => {
     if (!confirm('Tem certeza que deseja excluir esta despesa?')) return
     
     try {
-      await deleteExpenseMutation.mutateAsync(expense.id)
+      await deleteExpense(expense.id)
       toast.success('Despesa excluída com sucesso!')
     } catch (error) {
       toast.error('Erro ao excluir despesa')
     }
   }
 
-  const handleDuplicateExpense = async (expense: Expense) => {
+  const handleDuplicateExpense = async (expense: any) => {
     try {
-      await duplicateExpenseMutation.mutateAsync(expense.id)
+      await createExpense({
+        ...expense,
+        id: undefined,
+        createdAt: undefined,
+        syncVersion: undefined
+      });
       toast.success('Despesa duplicada com sucesso!')
     } catch (error) {
       toast.error('Erro ao duplicar despesa')
@@ -305,12 +341,12 @@ export function ExpensesPage() {
   const handleExportFormat = async (exportFormat: 'csv' | 'excel' | 'pdf') => {
     try {
       const expensesToExport = filteredExpenses.map(expense => ({
-        data: format(new Date(expense.date), 'dd/MM/yyyy'),
-        descricao: expense.title,
-        categoria: categories.find(c => c.id === expense.categoryId)?.name || 'Não categorizada',
+        data: format(new Date(expense.createdAt), 'dd/MM/yyyy'),
+        descricao: expense.description,
+        categoria: categories.find(c => c.id === expense.category)?.name || 'Não categorizada',
         valor: expense.amount,
         metodo_pagamento: expense.paymentMethod,
-        notas: expense.notes || ''
+        notas: expense.tags?.join(', ') || ''
       }))
 
       const filename = `despesas_${format(currentMonth, 'yyyy-MM')}`
@@ -324,7 +360,7 @@ export function ExpensesPage() {
           totalIncome: 0,
           balance: -filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0),
           expensesByCategory: categories.map(cat => {
-            const categoryExpenses = filteredExpenses.filter(exp => exp.categoryId === cat.id)
+            const categoryExpenses = filteredExpenses.filter(exp => exp.category === cat.id)
             const amount = categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0)
             return {
               category: cat.name,
@@ -570,7 +606,7 @@ export function ExpensesPage() {
 
       {/* Expense List */}
       <ExpenseList
-        expenses={filteredExpenses}
+        expenses={filteredExpenses as any}
         categories={categories}
         onEdit={handleEditExpense}
         onDuplicate={handleDuplicateExpense}
@@ -597,7 +633,7 @@ export function ExpensesPage() {
             categories={categories}
             onSubmit={handleCreateExpense}
             onCancel={() => setShowExpenseForm(false)}
-            isLoading={createExpenseMutation.isPending}
+            isLoading={false}
           />
         </DialogContent>
       </Dialog>
@@ -617,7 +653,7 @@ export function ExpensesPage() {
               categories={categories}
               onSubmit={handleUpdateExpense}
               onCancel={() => setEditingExpense(null)}
-              isLoading={updateExpenseMutation.isPending}
+              isLoading={false}
             />
           )}
         </DialogContent>

@@ -92,6 +92,61 @@ export interface Category {
   syncVersion: number
 }
 
+export interface Task {
+  id: string
+  householdId: string
+  title: string
+  description?: string
+  isCompleted: boolean
+  assignedTo?: string
+  completedBy?: string
+  completedAt?: Date | null
+  dueDate?: Date | null
+  priority: 'low' | 'medium' | 'high'
+  category?: string
+  tags?: string[]
+  createdBy: string
+  createdAt: Date
+  syncVersion: number
+}
+
+export interface Document {
+  id: string
+  householdId: string
+  name: string
+  type: string
+  size: number
+  url: string
+  path: string
+  tags?: string[]
+  description?: string
+  createdBy: string
+  createdAt: Date
+  syncVersion: number
+}
+
+export interface Medication {
+  id: string
+  householdId: string
+  name: string
+  dosage: string
+  frequency: string
+  instructions?: string
+  startDate: Date
+  endDate?: Date | null
+  isActive: boolean
+  assignedTo: string
+  prescribedBy?: string
+  notes?: string
+  reminders?: {
+    enabled: boolean
+    times: string[]
+  }
+  createdBy: string
+  createdAt: Date
+  syncVersion: number
+}
+
 export interface Invitation {
   id: string
   householdId: string

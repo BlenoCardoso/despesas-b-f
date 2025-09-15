@@ -14,9 +14,6 @@ import { CalendarPage } from './features/calendar/pages/CalendarPage'
 import { MedicationsPage } from './features/medications/pages/MedicationsPage'
 import { ReportsPage } from './features/reports/pages/ReportsPage'
 import { SettingsPage } from './features/settings/pages/SettingsPage'
-import FirebaseTest from './debug/FirebaseTest'
-import SimpleFirebaseTest from './debug/SimpleFirebaseTest'
-import ConfigChecker from './debug/ConfigChecker'
 import { useAppStore } from './core/store'
 import { db } from './core/db/database'
 import { categoryService } from './features/expenses/services/categoryService'
@@ -35,8 +32,6 @@ const queryClient = new QueryClient({
 
 function App() {
   const { 
-    currentHousehold, 
-    currentUser, 
     setCurrentHousehold, 
     setCurrentUser 
   } = useAppStore()
@@ -99,11 +94,6 @@ function App() {
         <Router>
           <div className="min-h-screen-safe bg-background text-foreground safe-area-insets overflow-x-hidden">
             <Routes>
-              {/* Rotas de debug - sem autenticação */}
-              <Route path="/debug" element={<FirebaseTest />} />
-              <Route path="/test" element={<SimpleFirebaseTest />} />
-              <Route path="/config" element={<ConfigChecker />} />
-              
               {/* Rotas protegidas */}
               <Route path="/*" element={
                 <ProtectedRoute>

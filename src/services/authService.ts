@@ -85,32 +85,62 @@ export class AuthService {
 
   async signInWithGoogle(): Promise<User> {
     try {
-      console.log('Iniciando login com Google...');
+      console.log('=== INICIANDO LOGIN COM GOOGLE ===');
       console.log('Platform:', Capacitor.isNativePlatform() ? 'Mobile' : 'Web');
+      console.log('Auth state:', auth.currentUser?.email || 'Not logged');
       
       if (Capacitor.isNativePlatform()) {
         // Mobile: usar Capacitor Google Auth
         console.log('Usando Capacitor Google Auth');
-        const googleUser = await GoogleAuth.signIn();
-        console.log('Google User:', googleUser);
+        console.log('Verificando inicialização do GoogleAuth...');
         
-        if (!googleUser.authentication?.idToken) {
-          throw new Error('Token de autenticação não encontrado');
-        }
+        try {
+          // Usar a mesma configuração que funcionou no teste
+          await GoogleAuth.initialize({
+            clientId: '958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleauth.com',
+            scopes: ['profile', 'email'],
+            grantOfflineAccess: true
+          });
+          
+          const googleUser = await GoogleAuth.signIn();
+          console.log('Google User recebido:', {
+            id: googleUser.id,
+            email: googleUser.email,
+            name: googleUser.name,
+            hasIdToken: !!googleUser.authentication?.idToken,
+            hasAccessToken: !!googleUser.authentication?.accessToken
+          });
+          
+          if (!googleUser.authentication?.idToken) {
+            console.error('ID Token não encontrado na resposta do Google');
+            throw new Error('Token de autenticação não encontrado - verifique configuração do Firebase');
+          }
 
-        const credential = GoogleAuthProvider.credential(
-          googleUser.authentication.idToken
-        );
-        
-        const result = await signInWithCredential(auth, credential);
-        console.log('Firebase sign-in result:', result.user?.email);
-        await this.syncUserData(result.user);
-        
-        if (!this.currentUser) {
-          throw new Error('Falha ao criar usuário');
+          console.log('Criando credencial Firebase...');
+          const credential = GoogleAuthProvider.credential(
+            googleUser.authentication.idToken
+          );
+          
+          console.log('Fazendo sign-in no Firebase...');
+          const result = await signInWithCredential(auth, credential);
+          console.log('Firebase sign-in SUCCESS:', result.user?.email);
+          
+          await this.syncUserData(result.user);
+          
+          if (!this.currentUser) {
+            throw new Error('Falha ao sincronizar dados do usuário');
+          }
+          
+          console.log('Login completo com sucesso!');
+          return this.currentUser;
+        } catch (googleAuthError: any) {
+          console.error('Erro específico do GoogleAuth:', {
+            code: googleAuthError.code,
+            message: googleAuthError.message,
+            details: googleAuthError
+          });
+          throw googleAuthError;
         }
-        
-        return this.currentUser;
       } else {
         // Web: usar popup
         console.log('Usando Firebase popup para web');
@@ -132,20 +162,39 @@ export class AuthService {
         return this.currentUser;
       }
     } catch (error: any) {
-      console.error('Erro detalhado no login:', error);
+      console.error('=== ERRO DETALHADO NO LOGIN ===');
+      console.error('Error object:', error);
+      console.error('Error code:', error?.code);
+      console.error('Error message:', error?.message);
+      console.error('Error stack:', error?.stack);
       
-      // Mensagens de erro mais específicas
-      if (error?.code === 'auth/popup-closed-by-user') {
-        throw new Error('Login cancelado pelo usuário');
-      } else if (error?.code === 'auth/popup-blocked') {
-        throw new Error('Popup bloqueado pelo navegador. Permita popups para este site.');
-      } else if (error?.code === 'auth/network-request-failed') {
-        throw new Error('Erro de conexão. Verifique sua internet.');
-      } else if (error?.message?.includes('Token')) {
-        throw new Error('Erro na autenticação Google');
+      // Mensagens de erro mais específicas baseadas no tipo de erro
+      if (Capacitor.isNativePlatform()) {
+        // Erros específicos do mobile
+        if (error?.message?.includes('DEVELOPER_ERROR') || error?.message?.includes('10:')) {
+          throw new Error('Erro de configuração: Verifique se a chave SHA-1 está registrada no Firebase Console. SHA-1 necessária: 97:1F:DB:3F:E1:4F:D6:FF:6A:50:F6:7E:4F:25:A1:7C:83:5F:5A:E1');
+        } else if (error?.message?.includes('SIGN_IN_CANCELLED')) {
+          throw new Error('Login cancelado pelo usuário');
+        } else if (error?.message?.includes('NETWORK_ERROR')) {
+          throw new Error('Erro de rede. Verifique sua conexão com a internet.');
+        } else if (error?.message?.includes('INTERNAL_ERROR')) {
+          throw new Error('Erro interno do Google Auth. Tente novamente em alguns instantes.');
+        } else if (error?.code === 'auth/invalid-credential') {
+          throw new Error('Credenciais inválidas. Verifique a configuração do Firebase.');
+        }
       } else {
-        throw new Error(`Erro no login: ${error?.message || 'Erro desconhecido'}`);
+        // Erros específicos do web
+        if (error?.code === 'auth/popup-closed-by-user') {
+          throw new Error('Login cancelado pelo usuário');
+        } else if (error?.code === 'auth/popup-blocked') {
+          throw new Error('Popup bloqueado pelo navegador. Permita popups para este site.');
+        } else if (error?.code === 'auth/network-request-failed') {
+          throw new Error('Erro de conexão. Verifique sua internet.');
+        }
       }
+      
+      // Erro genérico com mais informações
+      throw new Error(`Erro no login Google: ${error?.message || 'Erro desconhecido'}. Código: ${error?.code || 'N/A'}`);
     }
   }
 
