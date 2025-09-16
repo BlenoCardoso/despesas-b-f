@@ -4,20 +4,15 @@ import { Badge } from '@/components/ui/badge'
 import { AttachmentViewer } from '@/components/AttachmentViewer'
 import { Attachment } from '@/types/global'
 import { FileText, Image, Film, Eye } from 'lucide-react'
-import { useFilteredExpenses } from '@/features/expenses/hooks/useExpenses'
-import { startOfMonth, endOfMonth } from 'date-fns'
+
 import { formatFileSize } from '@/core/utils/formatters'
 
 export function AttachmentViewerDemo() {
   const [showViewer, setShowViewer] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   
-  // Buscar despesas do mês atual para obter anexos reais
-  const currentMonth = new Date()
-  const { data: expenses = [] } = useFilteredExpenses({
-    startDate: startOfMonth(currentMonth),
-    endDate: endOfMonth(currentMonth)
-  })
+  // Temporariamente desabilitado até implementar upload de anexos
+  const expenses: any[] = [] // Vazio por enquanto
   
   // Extrair todos os anexos das despesas
   const realAttachments = useMemo(() => {
@@ -74,12 +69,12 @@ export function AttachmentViewerDemo() {
     <>
       <div className="space-y-4 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
         <h3 className="font-semibold text-blue-900 dark:text-blue-100">
-          Visualizador de Anexos {isShowingRealAttachments ? '- Anexos Reais' : '- Demonstração'}
+          📎 Anexos das Despesas
         </h3>
         <p className="text-sm text-blue-700 dark:text-blue-300">
           {isShowingRealAttachments 
-            ? `Visualize os ${realAttachments.length} anexos das suas despesas do mês atual.`
-            : `Teste o visualizador de anexos com arquivos de demonstração (${expenses.length} despesas encontradas, mas nenhuma com anexos).`}
+            ? `Visualize os ${realAttachments.length} anexos das suas despesas atuais.`
+            : 'Ainda não há anexos nas suas despesas. Clique nos exemplos abaixo para testar o visualizador.'}
         </p>
         
         {attachmentsToShow.length > 0 ? (

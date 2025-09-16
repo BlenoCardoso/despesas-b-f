@@ -30,17 +30,26 @@ export class FirebaseExpenseService {
   // Criar despesa
   async createExpense(expense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'syncVersion'>): Promise<string> {
     try {
+      console.log('💾 Criando despesa no Firestore:', expense);
+      
       const expenseData = {
         ...expense,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        syncVersion: 1
+        syncVersion: 1,
+        // Garantir que deletedAt seja null explicitamente
+        deletedAt: null,
+        deletedBy: null
       };
 
+      console.log('💾 Dados da despesa a serem salvos:', expenseData);
+      
       const docRef = await addDoc(collection(db, 'expenses'), expenseData);
+      console.log('✅ Despesa criada com ID:', docRef.id);
+      
       return docRef.id;
     } catch (error) {
-      console.error('Erro ao criar despesa:', error);
+      console.error('❌ Erro ao criar despesa:', error);
       throw error;
     }
   }
@@ -48,48 +57,173 @@ export class FirebaseExpenseService {
   // Buscar despesas de uma household
   async getExpenses(householdId: string): Promise<Expense[]> {
     try {
+      console.log('🔍 Buscando despesas para householdId:', householdId);
+      
+      // TESTE: Primeiro vamos tentar buscar TODAS as despesas sem filtro
+      console.log('🧪 TESTE: Buscando TODAS as despesas da coleção para debug...');
+      const allDocsQuery = query(collection(db, 'expenses'));
+      const allSnapshot = await getDocs(allDocsQuery);
+      console.log('📊 TODAS as despesas na coleção:', allSnapshot.size);
+      
+      allSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        console.log('📄 Despesa encontrada:', {
+          id: doc.id,
+          householdId: data.householdId,
+          description: data.description,
+          amount: data.amount,
+          deletedAt: data.deletedAt
+        });
+      });
+      
+      // Agora vamos tentar com filtro por household
+      console.log('🔍 Agora filtrando por householdId:', householdId);
       const q = query(
         collection(db, 'expenses'),
-        where('householdId', '==', householdId),
-        where('deletedAt', '==', null),
-        orderBy('createdAt', 'desc')
+        where('householdId', '==', householdId)
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date()
-      })) as Expense[];
+      console.log('📊 Query com filtro executada, documentos encontrados:', querySnapshot.size);
+      
+      const expenses = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('📄 Documento filtrado:', doc.id, data);
+        
+        // Conversão segura de timestamps
+        let createdAt: Date;
+        let updatedAt: Date;
+        
+        try {
+          if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+            createdAt = data.createdAt.toDate();
+          } else if (data.createdAt && data.createdAt.seconds) {
+            createdAt = new Date(data.createdAt.seconds * 1000);
+          } else {
+            createdAt = new Date();
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao converter createdAt:', error);
+          createdAt = new Date();
+        }
+        
+        try {
+          if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+            updatedAt = data.updatedAt.toDate();
+          } else if (data.updatedAt && data.updatedAt.seconds) {
+            updatedAt = new Date(data.updatedAt.seconds * 1000);
+          } else {
+            updatedAt = new Date();
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao converter updatedAt:', error);
+          updatedAt = new Date();
+        }
+        
+        return {
+          id: doc.id,
+          ...data,
+          createdAt,
+          updatedAt
+        };
+      }) as Expense[];
+
+      // Filtrar despesas não deletadas no lado do cliente por enquanto
+      const activeExpenses = expenses.filter(expense => !expense.deletedAt);
+      console.log('✅ Despesas ativas encontradas:', activeExpenses.length);
+      
+      return activeExpenses;
     } catch (error) {
-      console.error('Erro ao buscar despesas:', error);
+      console.error('❌ Erro ao buscar despesas:', error);
       throw error;
     }
   }
 
   // Escutar mudanças em tempo real
   subscribeToExpenses(householdId: string, callback: (expenses: Expense[]) => void): () => void {
+    console.log('🔄 Configurando subscription para householdId:', householdId);
+    
     try {
-      const q = query(
-        collection(db, 'expenses'),
-        where('householdId', '==', householdId),
-        where('deletedAt', '==', null),
-        orderBy('createdAt', 'desc')
+      // TESTE: Primeiro listener sem filtro de household para ver se recebe algo
+      console.log('🧪 TESTE: Configurando listener SEM filtro primeiro...');
+      const testQuery = query(collection(db, 'expenses'));
+      
+      const unsubscribe = onSnapshot(testQuery, 
+        (querySnapshot) => {
+          console.log('🔄 Snapshot TESTE recebido, documentos TOTAIS:', querySnapshot.size);
+          
+          // Agora filtrar por household no lado do cliente
+          const allExpenses = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            
+            // Conversão segura de timestamps para o listener
+            let createdAt: Date;
+            let updatedAt: Date;
+            
+            try {
+              if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+                createdAt = data.createdAt.toDate();
+              } else if (data.createdAt && data.createdAt.seconds) {
+                createdAt = new Date(data.createdAt.seconds * 1000);
+              } else {
+                createdAt = new Date();
+              }
+            } catch (error) {
+              console.warn('⚠️ Listener - Erro ao converter createdAt:', error);
+              createdAt = new Date();
+            }
+            
+            try {
+              if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+                updatedAt = data.updatedAt.toDate();
+              } else if (data.updatedAt && data.updatedAt.seconds) {
+                updatedAt = new Date(data.updatedAt.seconds * 1000);
+              } else {
+                updatedAt = new Date();
+              }
+            } catch (error) {
+              console.warn('⚠️ Listener - Erro ao converter updatedAt:', error);
+              updatedAt = new Date();
+            }
+            
+            return {
+              id: doc.id,
+              ...data,
+              createdAt,
+              updatedAt
+            };
+          }) as Expense[];
+          
+          // Filtrar por household no cliente
+          const householdExpenses = allExpenses.filter(expense => 
+            expense.householdId === householdId
+          );
+          
+          console.log('🔍 Despesas do household', householdId + ':', householdExpenses.length);
+          
+          // Filtrar despesas não deletadas
+          const activeExpenses = householdExpenses.filter(expense => !expense.deletedAt);
+          console.log('✅ Despesas ativas no snapshot:', activeExpenses.length);
+          console.log('🔍 Lista de despesas ativas:', activeExpenses.map(e => ({
+            id: e.id,
+            description: e.description,
+            amount: e.amount,
+            householdId: e.householdId
+          })));
+          
+          callback(activeExpenses);
+        }, 
+        (error) => {
+          console.error('❌ Erro no snapshot listener:', error);
+          console.error('❌ Detalhes do erro:', error.code, error.message);
+        }
       );
-
-      return onSnapshot(q, (querySnapshot) => {
-        const expenses = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate() || new Date(),
-          updatedAt: doc.data().updatedAt?.toDate() || new Date()
-        })) as Expense[];
-        
-        callback(expenses);
-      });
+      
+      console.log('✅ Listener TESTE configurado com sucesso');
+      return unsubscribe;
+      
     } catch (error) {
-      console.error('Erro ao escutar despesas:', error);
+      console.error('❌ Erro ao configurar listener:', error);
       throw error;
     }
   }

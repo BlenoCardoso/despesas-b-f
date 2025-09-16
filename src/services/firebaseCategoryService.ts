@@ -45,6 +45,7 @@ export class FirebaseCategoryService {
 
   // Buscar categorias por household
   async getCategories(householdId: string): Promise<Category[]> {
+    console.log('🔍 Buscando categorias para household:', householdId);
     try {
       const q = query(
         collection(db, 'categories'),
@@ -53,11 +54,14 @@ export class FirebaseCategoryService {
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      const categories = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate() || new Date()
       })) as Category[];
+      
+      console.log(`📋 Encontradas ${categories.length} categorias:`, categories);
+      return categories;
     } catch (error) {
       console.error('Erro ao buscar categorias:', error);
       throw error;
@@ -66,6 +70,7 @@ export class FirebaseCategoryService {
 
   // Escutar mudanças em tempo real
   subscribeToCategories(householdId: string, callback: (categories: Category[]) => void): () => void {
+    console.log('👂 Iniciando subscription para categorias do household:', householdId);
     try {
       const q = query(
         collection(db, 'categories'),
@@ -80,6 +85,7 @@ export class FirebaseCategoryService {
           createdAt: doc.data().createdAt?.toDate() || new Date()
         })) as Category[];
         
+        console.log(`🔄 Subscription: Encontradas ${categories.length} categorias`);
         callback(categories);
       });
     } catch (error) {
@@ -106,6 +112,8 @@ export class FirebaseCategoryService {
 
   // Criar categorias padrão
   async createDefaultCategories(householdId: string, userId: string): Promise<void> {
+    console.log('🏗️ Criando categorias padrão para household:', householdId);
+    
     const defaultCategories = [
       { name: 'Alimentação', color: '#10B981', icon: 'utensils' },
       { name: 'Transporte', color: '#3B82F6', icon: 'car' },
@@ -116,15 +124,22 @@ export class FirebaseCategoryService {
       { name: 'Outros', color: '#6B7280', icon: 'more-horizontal' }
     ];
 
-    for (const category of defaultCategories) {
-      await this.createCategory({
-        householdId,
-        name: category.name,
-        color: category.color,
-        icon: category.icon,
-        isDefault: true,
-        createdBy: userId
-      });
+    try {
+      for (const category of defaultCategories) {
+        const categoryId = await this.createCategory({
+          householdId,
+          name: category.name,
+          color: category.color,
+          icon: category.icon,
+          isDefault: true,
+          createdBy: userId
+        });
+        console.log(`✅ Categoria criada: ${category.name} (ID: ${categoryId})`);
+      }
+      console.log('🎉 Todas as categorias padrão foram criadas com sucesso!');
+    } catch (error) {
+      console.error('❌ Erro ao criar categorias padrão:', error);
+      throw error;
     }
   }
 }

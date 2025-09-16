@@ -71,13 +71,43 @@ export function useFirebaseHousehold(): UseFirebaseHouseholdReturn {
     // Escutar mudanças nos households do usuário
     const unsubscribe = firebaseHouseholdService.subscribeToUserHouseholds(
       user.id,
-      (updatedHouseholds) => {
+      async (updatedHouseholds) => {
         setHouseholds(updatedHouseholds);
+        
+        // Se não há nenhum household, criar um padrão
+        if (updatedHouseholds.length === 0) {
+          try {
+            console.log('Criando household padrão para novo usuário...');
+            const defaultHouseholdId = await firebaseHouseholdService.createHousehold(
+              `Casa de ${user.name || user.email?.split('@')[0] || 'Usuário'}`, 
+              user.id
+            );
+            
+            // Adicionar household ao usuário
+            await firebaseUserService.addHousehold(user.id, defaultHouseholdId);
+            
+            // Criar categorias padrão para o novo household
+            const { firebaseCategoryService } = await import('../services/firebaseCategoryService');
+            await firebaseCategoryService.createDefaultCategories(defaultHouseholdId, user.id);
+            console.log('Categorias padrão criadas para o novo household');
+            
+            // O subscription vai disparar novamente com o novo household
+            return;
+          } catch (err) {
+            console.error('Erro ao criar household padrão:', err);
+            setError('Erro ao criar household inicial');
+            setLoading(false);
+            return;
+          }
+        }
         
         // Se não há household atual ou ele foi removido, selecionar o primeiro
         if (!currentHouseholdId || !updatedHouseholds.find(h => h.id === currentHouseholdId)) {
           const firstHousehold = updatedHouseholds[0];
           setCurrentHouseholdId(firstHousehold?.id || null);
+          if (firstHousehold?.id) {
+            localStorage.setItem('currentHouseholdId', firstHousehold.id);
+          }
         }
         
         setLoading(false);
@@ -208,11 +238,21 @@ export function useFirebaseHousehold(): UseFirebaseHouseholdReturn {
 
   // Carregar household salvo no localStorage na inicialização
   useEffect(() => {
-    const savedHouseholdId = localStorage.getItem('currentHouseholdId');
-    if (savedHouseholdId) {
-      setCurrentHouseholdId(savedHouseholdId);
+    // Só tentar carregar do localStorage depois que os households foram carregados
+    if (!loading && households.length > 0 && !currentHouseholdId) {
+      const savedHouseholdId = localStorage.getItem('currentHouseholdId');
+      if (savedHouseholdId && households.find(h => h.id === savedHouseholdId)) {
+        setCurrentHouseholdId(savedHouseholdId);
+      } else {
+        // Se o household salvo não existe mais, selecionar o primeiro disponível
+        const firstHousehold = households[0];
+        if (firstHousehold) {
+          setCurrentHouseholdId(firstHousehold.id);
+          localStorage.setItem('currentHouseholdId', firstHousehold.id);
+        }
+      }
     }
-  }, []);
+  }, [loading, households, currentHouseholdId]);
 
   return {
     households,

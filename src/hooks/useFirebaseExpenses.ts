@@ -19,9 +19,12 @@ export function useFirebaseExpenses(householdId?: string): UseFirebaseExpensesRe
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  // Função para buscar expenses
+  // Função para buscar expenses manualmente (se necessário)
   const refreshExpenses = useCallback(async () => {
+    console.log('💰 refreshExpenses chamado com householdId:', householdId, 'user:', user?.id);
+    
     if (!householdId || !user) {
+      console.log('❌ Sem householdId ou user, limpando despesas');
       setExpenses([]);
       setLoading(false);
       return;
@@ -29,8 +32,10 @@ export function useFirebaseExpenses(householdId?: string): UseFirebaseExpensesRe
 
     try {
       setLoading(true);
+      console.log('🔍 Buscando despesas para household:', householdId);
       setError(null);
       const expensesList = await firebaseExpenseService.getExpenses(householdId);
+      console.log('✅ Despesas encontradas:', expensesList.length, expensesList);
       setExpenses(expensesList);
     } catch (err) {
       console.error('Erro ao buscar expenses:', err);
@@ -40,9 +45,12 @@ export function useFirebaseExpenses(householdId?: string): UseFirebaseExpensesRe
     }
   }, [householdId, user]);
 
-  // Setup de sincronização em tempo real
+  // Setup de sincronização em tempo real - ÚNICO useEffect para evitar conflitos
   useEffect(() => {
+    console.log('🔄 useFirebaseExpenses useEffect - householdId:', householdId, 'user:', user?.id);
+    
     if (!householdId || !user) {
+      console.log('❌ Sem householdId ou user, limpando despesas');
       setExpenses([]);
       setLoading(false);
       return;
@@ -51,10 +59,13 @@ export function useFirebaseExpenses(householdId?: string): UseFirebaseExpensesRe
     setLoading(true);
     setError(null);
 
+    console.log('🎧 Configurando listener para householdId:', householdId);
+
     // Escutar mudanças em tempo real
     const unsubscribe = firebaseExpenseService.subscribeToExpenses(
       householdId, 
       (updatedExpenses) => {
+        console.log('🔄 Callback do listener executado, despesas:', updatedExpenses.length);
         setExpenses(updatedExpenses);
         setLoading(false);
       }
@@ -62,6 +73,7 @@ export function useFirebaseExpenses(householdId?: string): UseFirebaseExpensesRe
 
     // Cleanup subscription
     return () => {
+      console.log('🔄 Limpando listener para householdId:', householdId);
       if (unsubscribe) {
         unsubscribe();
       }

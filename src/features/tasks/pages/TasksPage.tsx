@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Plus, Search, CheckCircle2, Clock, AlertTriangle, Calendar } from 'lucide-react'
 import { TaskList } from '../components/TaskList'
 import { TaskForm } from '../components/TaskForm'
 import { useTasks, useTaskStats, useOverdueTasks, useTasksDueToday } from '../hooks/useTasks'
 import { Task } from '../types'
-import { initializeTestData } from '@/core/utils/testData'
 
 export function TasksPage() {
   const [searchText, setSearchText] = useState('')
@@ -13,10 +12,7 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showTaskForm, setShowTaskForm] = useState(false)
 
-  // Inicializar dados de teste
-  useEffect(() => {
-    initializeTestData()
-  }, [])
+
 
   // Debug function - remover depois
   const clearAllTasks = async () => {

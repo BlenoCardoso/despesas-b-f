@@ -99,6 +99,15 @@ export function ExpenseForm({
   const [showInstallment, setShowInstallment] = useState(!!expense?.installment)
   const [amountInput, setAmountInput] = useState('')
 
+  // Debug: verificar categorias no ExpenseForm
+  React.useEffect(() => {
+    console.log('=== DEBUG EXPENSE FORM ===');
+    console.log('Categorias recebidas:', categories);
+    console.log('Quantidade de categorias:', categories?.length);
+    console.log('Primeira categoria:', categories?.[0]);
+    console.log('===========================');
+  }, [categories])
+
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
@@ -135,12 +144,18 @@ export function ExpenseForm({
   }
 
   const handleSubmit = (data: ExpenseFormValues) => {
+    console.log('📝 EXPENSE FORM - handleSubmit chamado');
+    console.log('📝 Dados do form:', data);
+    
     const formData: ExpenseFormData = {
       ...data,
       attachments: attachments.length > 0 ? attachments : undefined,
       recurrence: showRecurrence ? data.recurrence : undefined,
       installment: showInstallment ? data.installment : undefined,
     }
+    
+    console.log('📝 FormData final:', formData);
+    console.log('📝 Chamando onSubmit...');
     onSubmit(formData)
   }
 
@@ -202,17 +217,23 @@ export function ExpenseForm({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            <div className="flex items-center gap-2">
-                              <div 
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: category.color }}
-                              />
-                              {category.name}
-                            </div>
+                        {categories && categories.length > 0 ? (
+                          categories.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: category.color }}
+                                />
+                                {category.name}
+                              </div>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="sem-categoria" disabled>
+                            <div className="text-gray-500">Carregando categorias...</div>
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />

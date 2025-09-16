@@ -25,13 +25,21 @@ import { Expense, ExpenseGroup } from '../types'
 import { cn } from '@/lib/utils'
 import { parseISO, format } from 'date-fns'
 
+// Tipo temporário que aceita tanto o formato local quanto o Firebase
+type FlexibleExpense = Expense & {
+  description?: string;
+  createdAt?: Date;
+  category?: string;
+  categoryId?: string;
+}
+
 interface ExpenseListProps {
-  expenses: Expense[]
+  expenses: FlexibleExpense[]
   categories: Array<{ id: string; name: string; icon: string; color: string }>
-  onEdit?: (expense: Expense) => void
-  onDuplicate?: (expense: Expense) => void
-  onDelete?: (expense: Expense) => void
-  onViewAttachments?: (expense: Expense) => void
+  onEdit?: (expense: FlexibleExpense) => void
+  onDuplicate?: (expense: FlexibleExpense) => void
+  onDelete?: (expense: FlexibleExpense) => void
+  onViewAttachments?: (expense: FlexibleExpense) => void
   isLoading?: boolean
   emptyMessage?: string
 }
@@ -53,21 +61,43 @@ export function ExpenseList({
     const groups: Record<string, ExpenseGroup> = {}
 
     expenses.forEach(expense => {
-      const expenseDate = typeof expense.date === 'string' ? parseISO(expense.date) : expense.date
-      const dateKey = format(expenseDate, 'yyyy-MM-dd')
-      const dateLabel = formatDateGroup(expenseDate)
-
-      if (!groups[dateKey]) {
-        groups[dateKey] = {
-          date: dateKey,
-          label: dateLabel,
-          expenses: [],
-          total: 0,
+      try {
+        // Usar createdAt em vez de date para despesas do Firebase
+        let expenseDate: Date;
+        const flexExpense = expense as any;
+        
+        if (flexExpense.createdAt) {
+          expenseDate = flexExpense.createdAt instanceof Date ? flexExpense.createdAt : new Date(flexExpense.createdAt);
+        } else if (expense.date) {
+          expenseDate = typeof expense.date === 'string' ? parseISO(expense.date) : expense.date;
+        } else {
+          expenseDate = new Date(); // Fallback para data atual
         }
-      }
+        
+        // Verificar se a data é válida antes de formatar
+        if (isNaN(expenseDate.getTime())) {
+          console.warn('⚠️ Data inválida encontrada na despesa:', expense.id);
+          expenseDate = new Date(); // Usar data atual como fallback
+        }
+        
+        const dateKey = format(expenseDate, 'yyyy-MM-dd')
+        const dateLabel = formatDateGroup(expenseDate)
 
-      groups[dateKey].expenses.push(expense)
-      groups[dateKey].total += expense.amount
+        if (!groups[dateKey]) {
+          groups[dateKey] = {
+            date: dateKey,
+            label: dateLabel,
+            expenses: [],
+            total: 0,
+          }
+        }
+
+        groups[dateKey].expenses.push(expense)
+        groups[dateKey].total += expense.amount
+      } catch (error) {
+        console.error('❌ Erro ao processar despesa no agrupamento:', expense.id, error);
+        // Pular esta despesa se há erro
+      }
     })
 
     // Sort groups by date (newest first)
@@ -176,7 +206,7 @@ export function ExpenseList({
                         <ExpenseItem
                           key={expense.id}
                           expense={expense}
-                          category={getCategoryInfo(expense.categoryId)}
+                          category={getCategoryInfo(expense.categoryId || (expense as any).category || '')}
                           onEdit={onEdit}
                           onDuplicate={onDuplicate}
                           onDelete={onDelete}
@@ -197,12 +227,12 @@ export function ExpenseList({
 }
 
 interface ExpenseItemProps {
-  expense: Expense
+  expense: FlexibleExpense
   category: { name: string; icon: string; color: string }
-  onEdit?: (expense: Expense) => void
-  onDuplicate?: (expense: Expense) => void
-  onDelete?: (expense: Expense) => void
-  onViewAttachments?: (expense: Expense) => void
+  onEdit?: (expense: FlexibleExpense) => void
+  onDuplicate?: (expense: FlexibleExpense) => void
+  onDelete?: (expense: FlexibleExpense) => void
+  onViewAttachments?: (expense: FlexibleExpense) => void
   isLast?: boolean
 }
 
@@ -242,7 +272,9 @@ function ExpenseItem({
           {/* Expense details */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-medium truncate">{expense.title}</h4>
+              <h4 className="font-medium truncate">
+                {expense.title || (expense as any).description || 'Despesa sem título'}
+              </h4>
               {hasAttachments && (
                 <button
                   onClick={() => onViewAttachments?.(expense)}

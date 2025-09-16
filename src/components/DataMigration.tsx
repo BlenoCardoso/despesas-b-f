@@ -13,12 +13,17 @@ interface DataMigrationProps {
 export default function DataMigration({ className = '' }: DataMigrationProps) {
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState<string>('');
-  const { currentHousehold } = useFirebaseHousehold();
+  const { currentHousehold, loading: householdLoading } = useFirebaseHousehold();
   const { user } = useAuth();
 
   const handleMigration = async () => {
     if (!user?.id) {
       toast.error('Usuário não autenticado');
+      return;
+    }
+
+    // Não mostrar erro se ainda está carregando
+    if (householdLoading) {
       return;
     }
 

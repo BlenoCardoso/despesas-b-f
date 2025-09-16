@@ -38,9 +38,11 @@ import { AttachmentViewerDemo } from '@/components/AttachmentViewerDemo'
 import { ExpenseFiltersForm } from '../components/ExpenseFiltersForm'
 import { useFirebaseExpenses } from '@/hooks/useFirebaseExpenses'
 import { useFirebaseHousehold } from '@/hooks/useFirebaseHousehold'
+import { useAuth } from '@/hooks/useAuth'
+import { firebaseExpenseService } from '@/services/firebaseExpenseService'
 import { 
-  useCategories,
   useBudgetSummary,
+  useCategories,
 } from '../hooks/useExpenses'
 import { Expense, ExpenseFilter } from '../types'
 import { Attachment } from '@/types/global'
@@ -57,26 +59,111 @@ export function ExpensesPage() {
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
+
+  // Error boundary para capturar erros
+  React.useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('❌ Erro capturado:', event.error);
+      setPageError(event.error?.message || 'Erro desconhecido');
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  // Se há erro na página, mostrar mensagem amigável
+  if (pageError) {
+    return (
+      <div className="container-responsive space-responsive min-h-full">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <h3 className="font-semibold text-red-800 mb-2">Ops! Algo deu errado</h3>
+          <p className="text-sm text-red-700 mb-4">
+            {pageError}
+          </p>
+          <Button 
+            onClick={() => {
+              setPageError(null);
+              window.location.reload();
+            }}
+          >
+            Recarregar Página
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const navigate = useNavigate()
   const exportReport = useExportReport()
 
   // Firebase hooks
-  const { currentHousehold } = useFirebaseHousehold()
-  const { 
+  const { currentHousehold, loading: householdLoading } = useFirebaseHousehold()
+  const { user } = useAuth()
+  // Usar o mesmo household ID fixo que usamos para criar despesas
+  const fixedHouseholdId = currentHousehold?.id || '84d0cc61-1d5b-4cc6-8514-6388ce351bd8';
+  
+  console.log('🏠 Usando household ID para buscar despesas:', fixedHouseholdId);
+  console.log('🏠 currentHousehold completo:', currentHousehold);
+  console.log('🏠 householdLoading:', householdLoading);
+  
+  const {
     expenses: monthlyExpenses, 
     loading: expensesLoading, 
     createExpense, 
     updateExpense, 
     deleteExpense 
-  } = useFirebaseExpenses(currentHousehold?.id)
+  } = useFirebaseExpenses(fixedHouseholdId)
 
-  // Queries locais ainda funcionais
+  // Debug adicional para verificar o que está chegando
+  React.useEffect(() => {
+    console.log('🔍 HOOK RETORNOU - monthlyExpenses:', monthlyExpenses);
+    console.log('🔍 HOOK RETORNOU - tipo:', typeof monthlyExpenses);
+    console.log('🔍 HOOK RETORNOU - é array?', Array.isArray(monthlyExpenses));
+    console.log('🔍 HOOK RETORNOU - length:', monthlyExpenses?.length);
+  }, [monthlyExpenses]);  // Hooks do Firebase e locais
   const { data: categories = [] } = useCategories()
   const { data: budgetSummary } = useBudgetSummary(format(currentMonth, 'yyyy-MM'))
+  
+  // Debug: verificar se há categorias
+  React.useEffect(() => {
+    console.log('=== DEBUG CATEGORIAS ===');
+    console.log('Household atual:', currentHousehold);
+    console.log('Categorias disponíveis:', categories);
+    console.log('Tipo de categories:', typeof categories);
+    console.log('É array?', Array.isArray(categories));
+    console.log('Quantidade:', categories?.length);
+    console.log('========================');
+  }, [categories, currentHousehold]);
 
-  // Filtrar expenses localmente por enquanto
+  // Debug: verificar despesas com tratamento de erro
+  React.useEffect(() => {
+    try {
+      console.log('=== DEBUG DESPESAS PAGE ===');
+      console.log('monthlyExpenses:', monthlyExpenses);
+      console.log('monthlyExpenses length:', monthlyExpenses?.length);
+      console.log('expensesLoading:', expensesLoading);
+      console.log('fixedHouseholdId:', fixedHouseholdId);
+      console.log('user:', user);
+      console.log('currentHousehold:', currentHousehold);
+      console.log('===========================');
+    } catch (error) {
+      console.error('❌ Erro no debug das despesas:', error);
+    }
+  }, [monthlyExpenses, expensesLoading, fixedHouseholdId, user, currentHousehold]);
+
+  // Filtrar expenses localmente - TEMPORARIAMENTE SEM FILTROS PARA DEBUG
   const filteredExpenses = useMemo(() => {
+    console.log('🔍 FILTRO - monthlyExpenses originais:', monthlyExpenses);
+    console.log('🔍 FILTRO - quantidade original:', monthlyExpenses?.length);
+    console.log('🔍 FILTRO - primeira despesa (se houver):', monthlyExpenses?.[0]);
+    
+    // TEMPORÁRIO: retornar todas as despesas sem filtro
+    console.log('⚠️ MODO DEBUG: Retornando TODAS as despesas sem filtro');
+    return monthlyExpenses || [];
+
+    // CÓDIGO ORIGINAL DOS FILTROS (comentado temporariamente)
+    /*
     let filtered = monthlyExpenses
 
     // Search filter
@@ -109,7 +196,10 @@ export function ExpensesPage() {
       filtered = filtered.filter(expense => expense.amount <= activeFilters.maxAmount!)
     }
 
+    console.log('🎯 FILTRO - resultado final:', filtered);
+    console.log('🎯 FILTRO - quantidade final:', filtered?.length);
     return filtered
+    */
   }, [monthlyExpenses, searchText, activeFilters, categories])
 
   // Calculate active filter count
@@ -204,21 +294,86 @@ export function ExpensesPage() {
 
   // Handlers
   const handleCreateExpense = async (data: any) => {
-    if (!currentHousehold?.id) {
-      toast.error('Nenhum household selecionado');
+    console.log('🚀 INICIANDO handleCreateExpense');
+    console.log('🚀 Data recebida:', data);
+    console.log('🚀 householdLoading:', householdLoading);
+    console.log('🚀 currentHousehold:', currentHousehold);
+    console.log('🚀 user:', user);
+    
+    // Verificar se temos os dados necessários
+    if (!user) {
+      console.error('❌ Usuário não autenticado');
+      toast.error('Você precisa fazer login para criar despesas');
       return;
     }
 
+    // Vamos usar o ID do household atual ou criar um temporário se necessário
+    let householdId = currentHousehold?.id;
+    
+    if (!householdId) {
+      console.log('⚠️ Nenhum household encontrado, vamos usar um household padrão temporariamente');
+      // Por enquanto, vamos usar um ID fixo para testar
+      householdId = '84d0cc61-1d5b-4cc6-8514-6388ce351bd8'; // ID que apareceu nos logs
+      console.log('🔧 Usando household ID:', householdId);
+    }
+
     try {
-      await createExpense({
-        ...data,
-        householdId: currentHousehold.id,
-        createdBy: 'current-user-id' // TODO: pegar do contexto de auth
-      });
+      console.log('📋 Dados do formulário:', data);
+      console.log('🏠 Household atual:', currentHousehold);
+      console.log('👤 Usuário atual:', user);
+      
+      // Mapear método de pagamento para o formato do Firebase
+      const paymentMethodMap: Record<string, 'money' | 'card' | 'pix' | 'transfer'> = {
+        'dinheiro': 'money',
+        'cartao_credito': 'card',
+        'cartao_debito': 'card',
+        'pix': 'pix',
+        'transferencia': 'transfer',
+        'boleto': 'transfer'
+      };
+      
+      // Validar dados obrigatórios
+      if (!data.title || !data.amount || !data.categoryId) {
+        console.error('❌ Dados obrigatórios faltando:', {
+          title: !!data.title,
+          amount: !!data.amount,
+          categoryId: !!data.categoryId
+        });
+        toast.error('Por favor, preencha todos os campos obrigatórios');
+        return;
+      }
+      
+      // Adaptar os dados para o Firebase schema
+      const expenseData = {
+        description: data.title, // Converter title para description
+        amount: Number(data.amount),
+        category: data.categoryId, // Usar category em vez de categoryId
+        paymentMethod: paymentMethodMap[data.paymentMethod as keyof typeof paymentMethodMap] || 'money',
+        householdId: householdId,
+        createdBy: user.id,
+        // Campos opcionais
+        ...(data.notes && { notes: data.notes }),
+        ...(data.tags && { tags: data.tags }),
+        ...(data.attachments && { attachments: data.attachments }),
+      };
+      
+      console.log('✨ Dados adaptados para Firebase:', expenseData);
+      
+      // Usar o serviço do Firebase em vez do local
+      console.log('💾 Chamando firebaseExpenseService.createExpense...');
+      const expenseId = await firebaseExpenseService.createExpense(expenseData);
+      console.log('✅ Despesa criada com ID:', expenseId);
+      
+      // Aguardar um pouco para o listener capturar a mudança
+      setTimeout(() => {
+        console.log('🔄 Verificando se a despesa apareceu na lista...');
+      }, 1000);
+      
       setShowExpenseForm(false)
       toast.success('Despesa criada com sucesso!')
     } catch (error) {
-      toast.error('Erro ao criar despesa')
+      console.error('❌ Erro detalhado ao criar despesa:', error);
+      toast.error('Erro ao criar despesa: ' + (error instanceof Error ? error.message : 'Erro desconhecido'))
     }
   }
 
@@ -471,6 +626,7 @@ export function ExpensesPage() {
             <Plus className="h-4 w-4 mr-2" />
             Nova Despesa
           </Button>
+
         </div>
 
         {/* Mobile Actions */}
@@ -496,7 +652,9 @@ export function ExpensesPage() {
         </div>
       </div>
 
-      {/* Demo do Visualizador de Anexos - Remover após teste */}
+
+
+      {/* Visualizador de Anexos */}
       <AttachmentViewerDemo />
 
       {/* Summary Card */}
