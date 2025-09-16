@@ -12,15 +12,6 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showTaskForm, setShowTaskForm] = useState(false)
 
-
-
-  // Debug function - remover depois
-  const clearAllTasks = async () => {
-    const { db } = await import('@/core/db/database')
-    await db.tasks.clear()
-    window.location.reload()
-  }
-
   // Queries
   const { data: allTasks = [], isLoading: tasksLoading } = useTasks()
   const { data: stats } = useTaskStats()
@@ -83,21 +74,13 @@ export function TasksPage() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setShowTaskForm(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nova Tarefa
-                </button>
-                <button 
-                  onClick={clearAllTasks}
-                  className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50"
-                >
-                  Reset
-                </button>
-              </div>
+              <button 
+                onClick={() => setShowTaskForm(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nova Tarefa
+              </button>
             </div>
           </div>
         </div>

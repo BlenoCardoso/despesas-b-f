@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Aplicativo para gerenciar despesas compartilhadas, tarefas, documentos, remédios e calendário" />
+    <meta name="keywords" content="despesas, finanças, tarefas, documentos, remédios, calendário, PWA" />
+    <meta name="author" content="Despesas Compartilhadas" />
+    
+    <!-- Theme and Display -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="background-color" content="#ffffff" />
+    <meta name="display" content="standalone" />
+    <meta name="orientation" content="portrait-primary" />
+    
+    <!-- Apple PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Despesas" />
+    <meta name="apple-touch-fullscreen" content="yes" />
+    
+    <!-- Microsoft PWA Meta Tags -->
+    <meta name="msapplication-TileColor" content="#2563eb" />
+    <meta name="msapplication-starturl" content="/" />
+    <meta name="msapplication-navbutton-color" content="#2563eb" />
+    
+    <!-- Security -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    
+    <!-- Social Media / Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Despesas Compartilhadas" />
+    <meta property="og:description" content="Aplicativo para gerenciar despesas compartilhadas, tarefas, documentos, remédios e calendário" />
+    <meta property="og:image" content="/icon-512x512.png" />
+    <meta property="og:url" content="/" />
+    <meta property="og:site_name" content="Despesas Compartilhadas" />
+    
+    <!-- Favicon and Icons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icon-144x144.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/icon-120x120.png" />
+    <link rel="apple-touch-icon" sizes="114x114" href="/icon-114x114.png" />
+    <link rel="apple-touch-icon" sizes="76x76" href="/icon-76x76.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="60x60" href="/icon-60x60.png" />
+    <link rel="apple-touch-icon" sizes="57x57" href="/icon-57x57.png" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <title>Despesas Compartilhadas</title>
+    <script type="module" crossorigin src="/assets/index-CsDw0Z2b.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-loIkOeMP.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Service Worker Registration -->
+    <script>
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', {
+            scope: '/',
+            updateViaCache: 'none'
+          })
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+        });
+      }
+      
+      // Handle app install prompt
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        console.log('Install prompt available');
+      });
+      
+      // Handle app installed
+      window.addEventListener('appinstalled', (evt) => {
+        console.log('App was installed');
+        deferredPrompt = null;
+      });
+      
+      // Handle online/offline status
+      window.addEventListener('online', () => {
+        console.log('App is online');
+        document.body.classList.remove('offline');
+        document.body.classList.add('online');
+      });
+      
+      window.addEventListener('offline', () => {
+        console.log('App is offline');
+        document.body.classList.remove('online');
+        document.body.classList.add('offline');
+      });
+      
+      // Set initial online/offline class
+      if (navigator.onLine) {
+        document.body.classList.add('online');
+      } else {
+        document.body.classList.add('offline');
+      }
+    </script>
+    
+    <!-- Critical CSS for offline fallback -->
+    <style>
+      .offline-indicator {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #f59e0b;
+        color: white;
+        text-align: center;
+        padding: 8px;
+        font-size: 14px;
+        z-index: 9999;
+      }
+      
+      body.offline .offline-indicator {
+        display: block;
+      }
+      
+      /* Loading spinner for initial load */
+      .loading-spinner {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: translate(-50%, -50%) rotate(0deg); }
+        100% { transform: translate(-50%, -50%) rotate(360deg); }
+      }
+      
+      /* Hide spinner when app loads (use general sibling so ordering between elements doesn't matter) */
+      #root:not(:empty) ~ .loading-spinner {
+        display: none;
+      }
+    </style>
+    
+    <!-- Offline indicator -->
+    <div class="offline-indicator">
+      Você está offline. Algumas funcionalidades podem estar limitadas.
+    </div>
+    
+    <!-- Loading spinner -->
+    <div class="loading-spinner"></div>
+  </body>
+</html>
