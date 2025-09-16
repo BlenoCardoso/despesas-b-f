@@ -19,13 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { 
   Plus, 
-  Filter, 
-  Search, 
-  Download,
-  Upload,
-  Settings,
-  Calendar,
-  TrendingUp
+  Search
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -75,10 +69,10 @@ export function ExpensesPage() {
   // Se há erro na página, mostrar mensagem amigável
   if (pageError) {
     return (
-      <div className="container-responsive space-responsive min-h-full">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+      <div className="container-central space-consistent min-h-full">
+        <div className="bg-red-50 border border-red-200 rounded-lg padding-consistent-sm mb-4">
           <h3 className="font-semibold text-red-800 mb-2">Ops! Algo deu errado</h3>
-          <p className="text-sm text-red-700 mb-4">
+          <p className="text-red-700 mb-4">
             {pageError}
           </p>
           <Button 
@@ -86,7 +80,9 @@ export function ExpensesPage() {
               setPageError(null);
               window.location.reload();
             }}
+            className="button-secondary-touch gap-2"
           >
+            <span>🔄</span>
             Recarregar Página
           </Button>
         </div>
@@ -456,13 +452,13 @@ export function ExpensesPage() {
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
     modal.innerHTML = `
       <div class="bg-white p-6 rounded-lg shadow-lg">
-        <h3 class="text-lg font-semibold mb-4">Escolha o formato de exportação</h3>
+        <h3 class="font-semibold mb-4">Escolha o formato de exportação</h3>
         <div class="flex gap-2 mb-4">
-          <button id="csv-btn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">CSV</button>
-          <button id="excel-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Excel</button>
-          <button id="pdf-btn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">PDF</button>
+          <button id="csv-btn" class="button-secondary-touch bg-green-600 text-white rounded hover:bg-green-700 gap-2">⬇️ CSV</button>
+          <button id="excel-btn" class="button-secondary-touch bg-blue-600 text-white rounded hover:bg-blue-700 gap-2">⬇️ Excel</button>
+          <button id="pdf-btn" class="button-secondary-touch bg-red-600 text-white rounded hover:bg-red-700 gap-2">⬇️ PDF</button>
         </div>
-        <button id="cancel-btn" class="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
+        <button id="cancel-btn" class="button-secondary-touch bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
       </div>
     `
     
@@ -581,74 +577,16 @@ export function ExpensesPage() {
   }
 
   return (
-    <div className="container-responsive space-responsive min-h-full">
-      {/* Header */}
-      <div className="flex-responsive items-start sm:items-center justify-between gap-4">
+    <div className="container-central space-consistent min-h-full">
+      {/* Clean Header - Only Title */}
+      <div className="flex items-center justify-between gap-consistent">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white truncate">
+          <h1 className="font-bold text-gray-900 dark:text-white truncate">
             Despesas
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+          <p className="text-gray-600 dark:text-gray-400 date-text">
             {format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-        </div>
-        
-        {/* Desktop Actions */}
-        <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleExportExpenses}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Exportar
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleImportExpenses}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Importar
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleViewReports}
-          >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Relatórios
-          </Button>
-          
-          <Button onClick={() => setShowExpenseForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Despesa
-          </Button>
-
-        </div>
-
-        {/* Mobile Actions */}
-        <div className="flex lg:hidden items-center gap-2 flex-shrink-0">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleViewReports}
-            className="px-2 touch-target"
-          >
-            <TrendingUp className="h-4 w-4" />
-            <span className="sr-only">Relatórios</span>
-          </Button>
-          
-          <Button 
-            onClick={() => setShowExpenseForm(true)}
-            size="sm"
-            className="touch-target"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">Nova</span>
-          </Button>
         </div>
       </div>
 
@@ -663,63 +601,73 @@ export function ExpensesPage() {
         isLoading={expensesLoading}
       />
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-        <div className="relative flex-1 order-2 sm:order-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar despesas..."
-            value={searchText}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
-            className="pl-10 no-zoom touch-target"
-          />
-        </div>
+      {/* Unified Search Input with Embedded Icons */}
+      <div className="relative">
+        {/* Search icon (left) */}
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         
-        <div className="flex items-center gap-2 order-1 sm:order-2 flex-shrink-0">
+        {/* Input field */}
+        <Input
+          placeholder="Buscar despesas..."
+          value={searchText}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+          className="pl-10 pr-20 h-11"
+        />
+        
+        {/* Action icons (right) */}
+        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-consistent-sm">
+          {/* Filter Icon */}
           <Sheet open={showFilters} onOpenChange={setShowFilters}>
             <SheetTrigger asChild>
-              <Button variant="outline" className="relative touch-target flex-1 sm:flex-none">
-                <Filter className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Filtros</span>
+              <button 
+                className="relative button-icon-touch hover:bg-gray-100 rounded-md transition-colors"
+                title="Filtros"
+              >
+                <span className="text-lg">🧪</span>
                 {activeFilterCount > 0 && (
                   <Badge 
                     variant="destructive" 
-                    className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                    className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs"
                   >
                     {activeFilterCount}
                   </Badge>
                 )}
-              </Button>
+              </button>
             </SheetTrigger>
-          <SheetContent className="flex flex-col h-full">
-            <SheetHeader className="shrink-0">
-              <SheetTitle>Filtros</SheetTitle>
-              <SheetDescription>
-                Filtre suas despesas por categoria, forma de pagamento e valor
-              </SheetDescription>
-            </SheetHeader>
-            <div className="flex-1 min-h-0 -mx-6 px-6">
-              <ExpenseFiltersForm
-                filters={activeFilters}
-                categories={categories}
-                onFiltersChange={handleFiltersChange}
-                onReset={handleResetFilters}
-                activeFilterCount={activeFilterCount}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-
-          <Button variant="outline" size="sm" className="touch-target">
-            <Calendar className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">
-              {format(currentMonth, "MMM yyyy", { locale: ptBR })}
-            </span>
-          </Button>
+            <SheetContent className="flex flex-col h-full">
+              <SheetHeader className="shrink-0">
+                <SheetTitle>Filtros</SheetTitle>
+                <SheetDescription>
+                  Filtre suas despesas por categoria, forma de pagamento e valor
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 min-h-0 -mx-6 px-6">
+                <ExpenseFiltersForm
+                  filters={activeFilters}
+                  categories={categories}
+                  onFiltersChange={handleFiltersChange}
+                  onReset={handleResetFilters}
+                  activeFilterCount={activeFilterCount}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+          
+          {/* Calendar Icon */}
+          <button 
+            className="button-icon-touch hover:bg-gray-100 rounded-md transition-colors"
+            title={`Período: ${format(currentMonth, "MMM yyyy", { locale: ptBR })}`}
+            onClick={() => {
+              // TODO: Implementar seletor de período
+              console.log('Abrir seletor de período');
+            }}
+          >
+            <span className="text-lg">📅</span>
+          </button>
         </div>
       </div>
 
-      {/* Active Filters */}
+      {/* Active Filters - Mobile Optimized */}
       {activeFilterCount > 0 && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -727,37 +675,49 @@ export function ExpensesPage() {
           exit={{ opacity: 0, height: 0 }}
           className="flex items-center gap-2 flex-wrap"
         >
-          <span className="text-sm text-gray-500">Filtros ativos:</span>
+          <span className="text-xs text-gray-500 shrink-0">Filtros:</span>
           {searchText.trim() && (
-            <Badge variant="secondary" className="gap-1">
-              Busca: "{searchText}"
-              <button onClick={() => setSearchText('')}>×</button>
+            <Badge variant="secondary" className="gap-1 text-xs">
+              "{searchText.length > 10 ? searchText.substring(0, 10) + '...' : searchText}"
+              <button 
+                onClick={() => setSearchText('')}
+                className="touch-target-small ml-1 hover:bg-gray-200 rounded"
+              >×</button>
             </Badge>
           )}
           
           {activeFilters.categoryIds?.length && (
-            <Badge variant="secondary" className="gap-1">
-              {activeFilters.categoryIds.length} categoria{activeFilters.categoryIds.length > 1 ? 's' : ''}
-              <button onClick={() => setActiveFilters(prev => ({ ...prev, categoryIds: [] }))}>×</button>
+            <Badge variant="secondary" className="gap-1 text-xs">
+              {activeFilters.categoryIds.length} cat.
+              <button 
+                onClick={() => setActiveFilters(prev => ({ ...prev, categoryIds: [] }))}
+                className="touch-target-small ml-1 hover:bg-gray-200 rounded"
+              >×</button>
             </Badge>
           )}
           
           {activeFilters.paymentMethods?.length && (
-            <Badge variant="secondary" className="gap-1">
-              {activeFilters.paymentMethods.length} forma{activeFilters.paymentMethods.length > 1 ? 's' : ''} de pagamento
-              <button onClick={() => setActiveFilters(prev => ({ ...prev, paymentMethods: [] }))}>×</button>
+            <Badge variant="secondary" className="gap-1 text-xs">
+              {activeFilters.paymentMethods.length} pag.
+              <button 
+                onClick={() => setActiveFilters(prev => ({ ...prev, paymentMethods: [] }))}
+                className="touch-target-small ml-1 hover:bg-gray-200 rounded"
+              >×</button>
             </Badge>
           )}
           
           {(activeFilters.minAmount !== undefined || activeFilters.maxAmount !== undefined) && (
-            <Badge variant="secondary" className="gap-1">
-              Valor: {activeFilters.minAmount !== undefined ? `≥${formatCurrency(activeFilters.minAmount)}` : ''}{activeFilters.minAmount !== undefined && activeFilters.maxAmount !== undefined ? ' e ' : ''}{activeFilters.maxAmount !== undefined ? `≤${formatCurrency(activeFilters.maxAmount)}` : ''}
-              <button onClick={() => setActiveFilters(prev => ({ ...prev, minAmount: undefined, maxAmount: undefined }))}>×</button>
+            <Badge variant="secondary" className="gap-1 text-xs">
+              Valor
+              <button 
+                onClick={() => setActiveFilters(prev => ({ ...prev, minAmount: undefined, maxAmount: undefined }))}
+                className="touch-target-small ml-1 hover:bg-gray-200 rounded"
+              >×</button>
             </Badge>
           )}
           
-          <Button variant="outline" size="sm" onClick={handleResetFilters}>
-            Limpar todos
+          <Button variant="outline" size="sm" onClick={handleResetFilters} className="btn-touch-safe-sm text-xs">
+            Limpar
           </Button>
         </motion.div>
       )}
@@ -826,6 +786,16 @@ export function ExpensesPage() {
           onClose={() => setViewingAttachments(null)}
         />
       )}
+
+      {/* Floating Action Button (FAB) */}
+      <Button
+        onClick={() => setShowExpenseForm(true)}
+        className="fixed bottom-6 right-6 h-14 w-14 min-h-[56px] min-w-[56px] rounded-full shadow-lg hover:shadow-xl transition-all duration-200 z-50 bg-blue-600 hover:bg-blue-700 active:scale-95 flex items-center justify-center"
+        size="default"
+      >
+        <Plus className="h-6 w-6" />
+        <span className="sr-only">Nova Despesa</span>
+      </Button>
     </div>
   )
 }

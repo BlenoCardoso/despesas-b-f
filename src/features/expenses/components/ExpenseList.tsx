@@ -10,7 +10,8 @@ import {
   Paperclip,
   Calendar,
   CreditCard,
-  Tag
+  Tag,
+  ChevronDown
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -126,13 +127,13 @@ export function ExpenseList({
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-consistent">
         {[1, 2, 3].map(i => (
           <Card key={i} className="animate-pulse">
-            <CardContent className="p-4">
-              <div className="space-y-3">
+            <CardContent className="padding-consistent">
+              <div className="space-consistent-sm">
                 <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="space-y-2">
+                <div className="space-consistent-sm">
                   <div className="h-16 bg-gray-200 rounded"></div>
                   <div className="h-16 bg-gray-200 rounded"></div>
                 </div>
@@ -147,11 +148,11 @@ export function ExpenseList({
   if (groupedExpenses.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
+        <CardContent className="padding-consistent-lg text-center">
           <div className="text-gray-500">
             <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium mb-2">Nenhuma despesa</p>
-            <p className="text-sm">{emptyMessage}</p>
+            <p className="font-medium mb-2">Nenhuma despesa</p>
+            <p>{emptyMessage}</p>
           </div>
         </CardContent>
       </Card>
@@ -159,7 +160,7 @@ export function ExpenseList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-consistent">
       {groupedExpenses.map(group => (
         <motion.div
           key={group.date}
@@ -169,25 +170,29 @@ export function ExpenseList({
         >
           <Card>
             <CardContent className="p-0">
-              {/* Group header */}
+              {/* Compact Group Header */}
               <button
                 onClick={() => toggleGroup(group.date)}
-                className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                className="w-full btn-touch-safe padding-consistent-sm justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
               >
-                <div className="flex items-center gap-3">
-                  <h3 className="font-semibold text-left">{group.label}</h3>
-                  <Badge variant="secondary" className="text-xs">
-                    {group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{formatCurrency(group.total)}</span>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <motion.div
                     animate={{ rotate: expandedGroups.has(group.date) ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
+                    className="shrink-0"
                   >
-                    <Calendar className="h-4 w-4" />
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
                   </motion.div>
+                  <div className="flex items-center gap-consistent-sm min-w-0 flex-1">
+                    <h3 className="font-medium date-text truncate">{group.label}</h3>
+                    <span className="text-gray-500 shrink-0">•</span>
+                    <span className="text-gray-600 shrink-0">
+                      {group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0 ml-2">
+                  <span className="monetary-small font-semibold">{formatCurrency(group.total)}</span>
                 </div>
               </button>
 
@@ -255,109 +260,118 @@ function ExpenseItem({
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        "p-4 hover:bg-gray-50 transition-colors",
+        "padding-consistent-sm hover:bg-gray-50 transition-colors",
         !isLast && "border-b"
       )}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Category icon */}
+      {/* Mobile-optimized layout */}
+      <div className="flex items-start justify-between gap-consistent">
+        <div className="flex items-start gap-consistent flex-1 min-w-0">
+          {/* Compact category icon */}
           <div 
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium shrink-0"
             style={{ backgroundColor: category.color }}
           >
-            <Tag className="h-5 w-5" />
+            <Tag className="h-4 w-4" />
           </div>
 
-          {/* Expense details */}
+          {/* Expense details - mobile optimized */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-medium truncate">
-                {expense.title || (expense as any).description || 'Despesa sem título'}
-              </h4>
-              {hasAttachments && (
-                <button
-                  onClick={() => onViewAttachments?.(expense)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span>{category.name}</span>
-              <span>•</span>
-              <CreditCard className="h-3 w-3" />
-              <span>{formatPaymentMethod(expense.paymentMethod)}</span>
+            <div className="flex items-start justify-between gap-consistent-sm mb-1">
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium truncate leading-tight">
+                  {expense.title || (expense as any).description || 'Despesa sem título'}
+                </h4>
+                
+                {/* Mobile-friendly details */}
+                <div className="flex items-center gap-consistent-sm text-gray-500 mt-1">
+                  <span className="truncate max-w-20">{category.name}</span>
+                  {hasAttachments && (
+                    <>
+                      <span>•</span>
+                      <button
+                        onClick={() => onViewAttachments?.(expense)}
+                        className="text-gray-400 hover:text-gray-600 touch-target-small"
+                      >
+                        <Paperclip className="h-3 w-3" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                {/* Payment method - compact */}
+                <div className="flex items-center gap-consistent-sm text-gray-500 mt-0.5">
+                  <CreditCard className="h-3 w-3" />
+                  <span className="truncate">{formatPaymentMethod(expense.paymentMethod)}</span>
+                  
+                  {(hasRecurrence || hasInstallment) && (
+                    <>
+                      <span>•</span>
+                      {hasRecurrence && (
+                        <Badge variant="outline" className="badge px-1 py-0">Rec</Badge>
+                      )}
+                      {hasInstallment && (
+                        <Badge variant="outline" className="badge px-1 py-0">
+                          {expense.installment?.count}/{expense.installment?.total}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </div>
+                
+                {expense.notes && (
+                  <p className="text-xs text-gray-600 mt-1 truncate">{expense.notes}</p>
+                )}
+              </div>
               
-              {hasRecurrence && (
-                <>
-                  <span>•</span>
-                  <Badge variant="outline" className="text-xs">Recorrente</Badge>
-                </>
-              )}
-              
-              {hasInstallment && (
-                <>
-                  <span>•</span>
-                  <Badge variant="outline" className="text-xs">
-                    {expense.installment?.count}/{expense.installment?.total}
-                  </Badge>
-                </>
-              )}
+              {/* Amount - right aligned */}
+              <div className="text-right shrink-0">
+                <div className="monetary-value font-semibold">{formatCurrency(expense.amount)}</div>
+              </div>
             </div>
-
-            {expense.notes && (
-              <p className="text-sm text-gray-600 mt-1 truncate">{expense.notes}</p>
-            )}
           </div>
         </div>
 
-        {/* Amount and actions */}
-        <div className="flex items-center gap-3">
-          <span className="font-semibold text-lg">{formatCurrency(expense.amount)}</span>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onEdit && (
-                <DropdownMenuItem onClick={() => onEdit(expense)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
+        {/* Compact actions button */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="button-icon-touch shrink-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onEdit && (
+              <DropdownMenuItem onClick={() => onEdit(expense)}>
+                <Edit className="h-4 w-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+            )}
+            {onDuplicate && (
+              <DropdownMenuItem onClick={() => onDuplicate(expense)}>
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicar
+              </DropdownMenuItem>
+            )}
+            {hasAttachments && onViewAttachments && (
+              <DropdownMenuItem onClick={() => onViewAttachments(expense)}>
+                <Paperclip className="h-4 w-4 mr-2" />
+                Ver anexos
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={() => onDelete(expense)}
+                  className="text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir
                 </DropdownMenuItem>
-              )}
-              {onDuplicate && (
-                <DropdownMenuItem onClick={() => onDuplicate(expense)}>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Duplicar
-                </DropdownMenuItem>
-              )}
-              {hasAttachments && onViewAttachments && (
-                <DropdownMenuItem onClick={() => onViewAttachments(expense)}>
-                  <Paperclip className="h-4 w-4 mr-2" />
-                  Ver anexos
-                </DropdownMenuItem>
-              )}
-              {onDelete && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => onDelete(expense)}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Excluir
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </motion.div>
   )

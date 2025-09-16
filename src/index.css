@@ -1,0 +1,305 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tipografia Fluida - Sistema de escala responsiva */
+:root {
+  /* Viewport breakpoints para cálculo fluido */
+  --viewport-min: 320px;
+  --viewport-max: 1280px;
+}
+
+/* Reset base com fluidez */
+html {
+  /* Font size base fluida: 14px em mobile, 16px em desktop */
+  font-size: clamp(14px, 3.125vw, 16px);
+}
+
+body {
+  /* Texto base legível em todas as telas */
+  font-size: clamp(14px, 2.5vw, 16px);
+  line-height: 1.5;
+}
+
+/* Hierarquia de títulos fluida */
+h1, .text-2xl {
+  /* Títulos principais: 20px mobile → 32px desktop */
+  font-size: clamp(20px, 5vw, 32px);
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+h2, .text-xl {
+  /* Subtítulos: 18px mobile → 24px desktop */
+  font-size: clamp(18px, 4vw, 24px);
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+h3, .text-lg {
+  /* Seções: 16px mobile → 20px desktop */
+  font-size: clamp(16px, 3.5vw, 20px);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+/* Texto de conteúdo otimizado */
+p, .text-base, div {
+  /* Parágrafos: 14px mobile → 16px desktop */
+  font-size: clamp(14px, 2.5vw, 16px);
+  line-height: 1.5;
+}
+
+/* Valores monetários com destaque proporcional */
+.monetary-value, .text-money {
+  /* Valores R$: 18px mobile → 28px desktop */
+  font-size: clamp(18px, 4.5vw, 28px);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.monetary-large {
+  /* Totais principais: 24px mobile → 36px desktop */
+  font-size: clamp(24px, 6vw, 36px);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.monetary-small {
+  /* Valores secundários: 14px mobile → 18px desktop */
+  font-size: clamp(14px, 3vw, 18px);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Textos secundários legíveis */
+.text-sm, small {
+  /* Labels e auxiliares: 12px mobile → 14px desktop */
+  font-size: clamp(12px, 2vw, 14px);
+  line-height: 1.4;
+}
+
+.text-xs {
+  /* Micro textos: 11px mobile → 12px desktop */
+  font-size: clamp(11px, 1.8vw, 12px);
+  line-height: 1.3;
+}
+
+/* Datas e timestamps */
+.date-text {
+  /* Datas: 13px mobile → 15px desktop */
+  font-size: clamp(13px, 2.2vw, 15px);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Botões com texto proporcional */
+button, .btn {
+  /* Botões: 14px mobile → 16px desktop */
+  font-size: clamp(14px, 2.5vw, 16px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.btn-large {
+  /* Botões grandes: 16px mobile → 18px desktop */
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+}
+
+/* Inputs e forms */
+input, textarea, select {
+  /* Campos de entrada: 14px mobile → 16px desktop */
+  font-size: clamp(14px, 2.5vw, 16px);
+  line-height: 1.4;
+}
+
+/* Badges e chips */
+.badge, .chip {
+  /* Etiquetas: 11px mobile → 13px desktop */
+  font-size: clamp(11px, 2vw, 13px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* Estados especiais para telas muito pequenas */
+@media (max-width: 360px) {
+  .monetary-large {
+    /* Em telas muito pequenas, limitar o máximo */
+    font-size: clamp(20px, 5.5vw, 24px);
+  }
+  
+  h1, .text-2xl {
+    font-size: clamp(18px, 4.5vw, 20px);
+  }
+}
+
+/* Otimizações para telas grandes */
+@media (min-width: 1024px) {
+  .monetary-large {
+    /* Em desktop, permitir mais destaque */
+    font-size: clamp(28px, 3vw, 40px);
+  }
+}
+
+/* Utilities extras para casos específicos */
+.text-fluid-xs { font-size: clamp(10px, 1.5vw, 11px); }
+.text-fluid-sm { font-size: clamp(12px, 2vw, 14px); }
+.text-fluid-base { font-size: clamp(14px, 2.5vw, 16px); }
+.text-fluid-lg { font-size: clamp(16px, 3.5vw, 20px); }
+.text-fluid-xl { font-size: clamp(18px, 4vw, 24px); }
+.text-fluid-2xl { font-size: clamp(20px, 5vw, 32px); }
+.text-fluid-3xl { font-size: clamp(24px, 6vw, 36px); }
+
+/* Badge/Chip variants customizadas para orçamento */
+.badge-success {
+  background-color: rgb(220 252 231); /* green-100 */
+  color: rgb(22 101 52); /* green-800 */
+  border: 1px solid rgb(134 239 172); /* green-300 */
+}
+
+.badge-warning {
+  background-color: rgb(254 249 195); /* yellow-100 */
+  color: rgb(133 77 14); /* yellow-800 */
+  border: 1px solid rgb(253 224 71); /* yellow-300 */
+}
+
+.badge-error {
+  background-color: rgb(254 226 226); /* red-100 */
+  color: rgb(153 27 27); /* red-800 */
+  border: 1px solid rgb(252 165 165); /* red-300 */
+}
+
+/* Sistema de Container Central Consistente */
+.container-central {
+  /* Container com largura máxima para mobile-first */
+  max-width: 640px; /* max-w-screen-sm */
+  margin: 0 auto;
+  padding-left: 12px; /* px-3 */
+  padding-right: 12px; /* px-3 */
+  width: 100%;
+}
+
+/* Espaçamentos verticais consistentes */
+.space-consistent {
+  /* Espaçamento vertical uniforme */
+  > * + * {
+    margin-top: 16px; /* space-y-4 */
+  }
+}
+
+.space-consistent-sm {
+  /* Espaçamento menor para elementos compactos */
+  > * + * {
+    margin-top: 12px; /* space-y-3 */
+  }
+}
+
+.space-consistent-lg {
+  /* Espaçamento maior para seções importantes */
+  > * + * {
+    margin-top: 24px; /* space-y-6 */
+  }
+}
+
+/* Padding interno consistente */
+.padding-consistent {
+  padding: 16px 12px; /* py-4 px-3 */
+}
+
+.padding-consistent-sm {
+  padding: 12px; /* p-3 */
+}
+
+.padding-consistent-lg {
+  padding: 24px 12px; /* py-6 px-3 */
+}
+
+/* Sistema de gap consistente para flex/grid */
+.gap-consistent {
+  gap: 12px; /* gap-3 */
+}
+
+.gap-consistent-sm {
+  gap: 8px; /* gap-2 */
+}
+
+.gap-consistent-lg {
+  gap: 16px; /* gap-4 */
+}
+
+/* ========================================
+   ALVOS DE TOQUE ACESSÍVEIS (44px+)
+   ======================================== */
+
+/* Alvos de toque mínimos para acessibilidade (44px+ recomendado WCAG) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.touch-target-button {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+}
+
+.touch-target-small {
+  min-height: 36px;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Botões com altura mínima para conforto */
+.btn-touch-safe {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+}
+
+.btn-touch-safe-sm {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+}
+
+/* Classes para botões existentes */
+.button-primary-touch {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.button-secondary-touch {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.button-icon-touch {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}

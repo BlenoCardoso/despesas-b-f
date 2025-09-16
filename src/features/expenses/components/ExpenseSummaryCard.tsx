@@ -2,7 +2,7 @@ import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { TrendingUp, TrendingDown, AlertTriangle, DollarSign } from 'lucide-react'
+import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Check, AlertCircle } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/core/utils/formatters'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -32,9 +32,24 @@ export function ExpenseSummaryCard({
   const isProjectionOverBudget = projection > budget && budget > 0
 
   const getBudgetStatus = () => {
-    if (isOverBudget) return { color: 'destructive', icon: AlertTriangle }
-    if (isNearLimit) return { color: 'warning', icon: AlertTriangle }
-    return { color: 'default', icon: DollarSign }
+    if (isOverBudget) return { 
+      color: 'destructive', 
+      icon: AlertCircle, 
+      text: 'Orçamento Estourou',
+      emoji: '❗'
+    }
+    if (isNearLimit) return { 
+      color: 'warning', 
+      icon: AlertTriangle, 
+      text: 'Próximo do Limite',
+      emoji: '⚠️'
+    }
+    return { 
+      color: 'success', 
+      icon: Check, 
+      text: 'Dentro do Orçamento',
+      emoji: '✅'
+    }
   }
 
   const getVariationColor = () => {
@@ -56,14 +71,14 @@ export function ExpenseSummaryCard({
     return (
       <Card className="w-full">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold">Resumo do Mês</CardTitle>
+          <CardTitle className="font-semibold">Resumo do Mês</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="animate-pulse space-y-3">
+        <CardContent className="space-consistent">
+          <div className="animate-pulse space-consistent-sm">
             <div className="h-8 bg-gray-200 rounded"></div>
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
             <div className="h-2 bg-gray-200 rounded"></div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-consistent">
               <div className="h-16 bg-gray-200 rounded"></div>
               <div className="h-16 bg-gray-200 rounded"></div>
             </div>
@@ -80,94 +95,75 @@ export function ExpenseSummaryCard({
       transition={{ duration: 0.3 }}
     >
       <Card className="w-full">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Resumo do Mês</CardTitle>
-            <Badge variant={budgetStatus.color as any} className="flex items-center gap-1">
-              <budgetStatus.icon className="h-3 w-3" />
-              {isOverBudget ? 'Acima do orçamento' : isNearLimit ? 'Próximo do limite' : 'No orçamento'}
-            </Badge>
+            <CardTitle className="font-semibold">Resumo do Mês</CardTitle>
+            {budget > 0 && (
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "flex items-center gap-1 font-medium border",
+                  budgetStatus.color === 'destructive' && "badge-error",
+                  budgetStatus.color === 'warning' && "badge-warning",
+                  budgetStatus.color === 'success' && "badge-success"
+                )}
+              >
+                <span className="text-sm">{budgetStatus.emoji}</span>
+                <span>{budgetStatus.text}</span>
+              </Badge>
+            )}
           </div>
         </CardHeader>
         
-        <CardContent className="space-y-4">
-          {/* Total gasto */}
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-medium text-gray-600">Total gasto</span>
-              <motion.span 
-                className="text-2xl font-bold"
-                key={totalMonth}
-                initial={{ scale: 1.1 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 0.2 }}
-              >
-                {formatCurrency(totalMonth)}
-              </motion.span>
-            </div>
-            
-            {budget > 0 && (
-              <>
-                <div className="flex items-center justify-between text-sm text-gray-600">
-                  <span>Orçamento: {formatCurrency(budget)}</span>
-                  <span>Restante: {formatCurrency(remaining)}</span>
-                </div>
-                <Progress 
-                  value={Math.min(budgetUsage, 100)} 
-                  className={cn(
-                    "h-2",
-                    isOverBudget && "bg-red-100",
-                    isNearLimit && "bg-yellow-100"
-                  )}
-                />
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>{formatPercentage(budgetUsage)}</span>
-                  {isOverBudget && (
-                    <span className="text-red-500 font-medium">
-                      +{formatCurrency(totalMonth - budget)} acima
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
+        <CardContent className="space-consistent-sm">
+          {/* Total gasto - Grande e centralizado */}
+          <div className="text-center">
+            <div className="text-gray-500 mb-1">Total gasto</div>
+            <motion.div 
+              className="monetary-large font-bold text-gray-900"
+              key={totalMonth}
+              initial={{ scale: 1.1 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              {formatCurrency(totalMonth)}
+            </motion.div>
           </div>
-
-          {/* Estatísticas */}
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="space-y-1">
-              <p className="text-xs text-gray-500">Média diária</p>
-              <p className="text-lg font-semibold">{formatCurrency(dailyAverage)}</p>
+          
+          {/* Grid 2x2 com mini-KPIs */}
+          <div className="grid grid-cols-2 gap-consistent-sm">
+            <div className="text-center padding-consistent-sm bg-gray-50 rounded-md">
+              <div className="text-gray-500 mb-1">Média/dia</div>
+              <div className="monetary-small font-semibold">{formatCurrency(dailyAverage)}</div>
             </div>
             
-            <div className="space-y-1">
-              <p className="text-xs text-gray-500">Projeção do mês</p>
-              <div className="flex items-center gap-1">
-                <p className={cn(
-                  "text-lg font-semibold",
-                  isProjectionOverBudget && "text-red-500"
-                )}>
-                  {formatCurrency(projection)}
-                </p>
-                {isProjectionOverBudget && (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                )}
+            <div className="text-center padding-consistent-sm bg-gray-50 rounded-md">
+              <div className="text-gray-500 mb-1">Projeção</div>
+              <div className={cn(
+                "monetary-small font-semibold",
+                isProjectionOverBudget && "text-red-500"
+              )}>
+                {formatCurrency(projection)}
               </div>
             </div>
           </div>
 
-          {/* Variação do mês anterior */}
-          {variationFromLastMonth !== 0 && (
-            <div className="flex items-center justify-between pt-2 border-t">
-              <span className="text-sm text-gray-600">vs. mês anterior</span>
-              <div className="flex items-center gap-1">
-                {VariationIcon && (
-                  <VariationIcon className={cn("h-4 w-4", getVariationColor())} />
-                )}
-                <span className={cn("text-sm font-medium", getVariationColor())}>
-                  {variationFromLastMonth > 0 ? '+' : ''}
-                  {formatPercentage(Math.abs(variationFromLastMonth))}
-                </span>
+          {/* Progress bar do orçamento - compacto */}
+          {budget > 0 && (
+            <div className="space-consistent-sm">
+              <div className="flex items-center justify-between text-gray-600">
+                <span>Orçamento {formatCurrency(budget)}</span>
+                <span>{formatPercentage(budgetUsage)}</span>
               </div>
+              <Progress 
+                value={Math.min(budgetUsage, 100)} 
+                className={cn(
+                  "h-2 transition-colors duration-300",
+                  isOverBudget && "[&>div]:bg-red-500 bg-red-100",
+                  isNearLimit && "[&>div]:bg-yellow-500 bg-yellow-100",
+                  !isOverBudget && !isNearLimit && "[&>div]:bg-green-500 bg-green-100"
+                )}
+              />
             </div>
           )}
         </CardContent>

@@ -336,6 +336,7 @@ export function ExpenseForm({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="btn-touch-safe"
                   onClick={() => document.getElementById('file-upload')?.click()}
                 >
                   <Upload className="h-4 w-4 mr-2" />
@@ -366,6 +367,7 @@ export function ExpenseForm({
                         type="button"
                         variant="ghost"
                         size="sm"
+                        className="button-icon-touch"
                         onClick={() => removeAttachment(index)}
                       >
                         <X className="h-4 w-4" />
@@ -564,14 +566,14 @@ export function ExpenseForm({
                 type="button"
                 variant="outline"
                 onClick={onCancel}
-                className="flex-1"
+                className="flex-1 btn-touch-safe"
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1"
+                className="flex-1 button-primary-touch"
               >
                 {isLoading ? 'Salvando...' : expense ? 'Atualizar' : 'Criar Despesa'}
               </Button>
