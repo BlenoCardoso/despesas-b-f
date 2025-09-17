@@ -47,7 +47,7 @@ export class FirebaseDocumentService {
     householdId: string, 
     userId: string,
     options?: { description?: string; tags?: string[] }
-  ): Promise<string> {
+  ): Promise<{ id: string; url: string; path: string; name: string; type: string; size: number }> {
     try {
       // Gerar um ID único para o arquivo
       const fileId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -74,7 +74,16 @@ export class FirebaseDocumentService {
       };
 
       const docRef = await addDoc(collection(db, 'documents'), documentData);
-      return docRef.id;
+
+      // Return useful metadata so callers can attach it to other entities
+      return {
+        id: docRef.id,
+        url: downloadURL,
+        path: filePath,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      };
     } catch (error) {
       console.error('Erro ao fazer upload do documento:', error);
       throw error;

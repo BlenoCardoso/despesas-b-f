@@ -291,8 +291,11 @@ function ExpenseItem({
                       <span>•</span>
                       <button
                         onClick={() => onViewAttachments?.(expense)}
-                        className="text-gray-400 hover:text-gray-600 touch-target-small"
+                        className="text-gray-400 hover:text-gray-600 touch-target-small inline-flex items-center gap-1"
+                        aria-label={`Ver ${expense.attachments?.length || 0} anexos`}
+                        title={`Ver anexos (${expense.attachments?.length || 0})`}
                       >
+                        <span aria-hidden>👁️</span>
                         <Paperclip className="h-3 w-3" />
                       </button>
                     </>
@@ -355,7 +358,7 @@ function ExpenseItem({
             {hasAttachments && onViewAttachments && (
               <DropdownMenuItem onClick={() => onViewAttachments(expense)}>
                 <Paperclip className="h-4 w-4 mr-2" />
-                Ver anexos
+                👁️ Ver anexos
               </DropdownMenuItem>
             )}
             {onDelete && (

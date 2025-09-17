@@ -406,7 +406,9 @@ export function Layout() {
             <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 smooth-scroll">
               <ErrorBoundary>
                 <div className="min-h-full">
-                  <Outlet />
+                  <div className="container-central readable py-4">
+                    <Outlet />
+                  </div>
                 </div>
               </ErrorBoundary>
             </main>

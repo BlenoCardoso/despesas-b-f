@@ -17,14 +17,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { 
-  Plus, 
+import {
+  Plus,
   Search,
   Filter,
   MoreVertical,
   TrendingUp,
   Activity,
-  ChevronRight,
   Paperclip,
   Eye,
   X,
@@ -40,12 +39,12 @@ import { ExpenseSummaryCard } from '../components/ExpenseSummaryCard'
 import { ExpenseList } from '../components/ExpenseList'
 import { ExpenseForm } from '../components/ExpenseForm'
 import { AttachmentViewer } from '@/components/AttachmentViewer'
-import { AttachmentViewerDemo } from '@/components/AttachmentViewerDemo'
 import { ExpenseFiltersForm } from '../components/ExpenseFiltersForm'
 import { useFirebaseExpenses } from '@/hooks/useFirebaseExpenses'
 import { useFirebaseHousehold } from '@/hooks/useFirebaseHousehold'
 import { useAuth } from '@/hooks/useAuth'
 import { firebaseExpenseService } from '@/services/firebaseExpenseService'
+import { firebaseDocumentService } from '@/services/firebaseDocumentService'
 import { 
   useBudgetSummary,
   useCategories,
@@ -60,6 +59,7 @@ import { useNavigate } from 'react-router-dom'
 
 export function ExpensesPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [activeFilters, setActiveFilters] = useState<ExpenseFilter>({})
   const [showExpenseForm, setShowExpenseForm] = useState(false)
@@ -222,6 +222,32 @@ export function ExpensesPage() {
     */
   }, [monthlyExpenses, searchText, activeFilters, categories])
 
+  // Agregar anexos disponíveis nas despesas filtradas
+  const attachmentsSummary = useMemo(() => {
+    const allAttachments: Attachment[] = []
+    const fes = (filteredExpenses as any[]) || []
+    fes.forEach((exp: any) => {
+      if (exp && exp.attachments && Array.isArray(exp.attachments)) {
+        exp.attachments.forEach((a: Attachment) => allAttachments.push(a))
+      }
+    })
+
+    // Demo fallback attachments (used when there are no real attachments)
+    const demoAttachments: Attachment[] = [
+      { id: 'demo-1', fileName: 'recibo-compra.pdf', mimeType: 'application/pdf', size: 245760, blobRef: 'demo-pdf-blob' },
+      { id: 'demo-2', fileName: 'foto-produto.jpg', mimeType: 'image/jpeg', size: 1024000, blobRef: 'demo-image-blob' },
+      { id: 'demo-3', fileName: 'video-unboxing.mp4', mimeType: 'video/mp4', size: 5242880, blobRef: 'demo-video-blob' }
+    ]
+
+    const hasReal = allAttachments.length > 0
+    return {
+      count: hasReal ? allAttachments.length : demoAttachments.length,
+      sample: (hasReal ? allAttachments : demoAttachments).slice(0, 3),
+      all: hasReal ? allAttachments : demoAttachments,
+      isDemo: !hasReal,
+    }
+  }, [filteredExpenses])
+
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
     let count = 0
@@ -379,6 +405,31 @@ export function ExpensesPage() {
       
       console.log('✨ Dados adaptados para Firebase:', expenseData);
       
+      // If there are attachments, upload them first and attach metadata
+      if (data.attachments && Array.isArray(data.attachments) && data.attachments.length > 0) {
+        try {
+          const uploaded = [] as any[]
+          for (const file of data.attachments) {
+            const meta = await firebaseDocumentService.uploadDocument(file, householdId!, user.id)
+            uploaded.push({
+              id: meta.id,
+              fileName: meta.name,
+              mimeType: meta.type,
+              size: meta.size,
+              url: meta.url,
+              path: meta.path,
+            })
+          }
+
+          // Attach uploaded documents metadata to expense payload
+          (expenseData as any).attachments = uploaded
+        } catch (err) {
+          console.error('Erro ao enviar anexos:', err)
+          toast.error('Erro ao enviar anexos')
+          return
+        }
+      }
+
       // Usar o serviço do Firebase em vez do local
       console.log('💾 Chamando firebaseExpenseService.createExpense...');
       const expenseId = await firebaseExpenseService.createExpense(expenseData);
@@ -489,15 +540,15 @@ export function ExpensesPage() {
     modal.innerHTML = `
       <div class="bg-white p-6 rounded-lg shadow-lg">
         <h3 class="font-semibold mb-4">Escolha o formato de exportação</h3>
-        <div class="flex flex-col sm:flex-row gap-2 mb-4">
+          <div class="flex flex-col sm:flex-row gap-2 mb-4">
           <button id="csv-btn" class="button-secondary-touch bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-2">
-            ${fileTextIcon}CSV
+            ${fileTextIcon}<span aria-hidden="true">⬇️</span> CSV
           </button>
           <button id="excel-btn" class="button-secondary-touch bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-            ${fileSpreadsheetIcon}Excel
+            ${fileSpreadsheetIcon}<span aria-hidden="true">⬇️</span> Excel
           </button>
           <button id="pdf-btn" class="button-secondary-touch bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-2">
-            ${downloadIcon}PDF
+            ${downloadIcon}<span aria-hidden="true">⬇️</span> PDF
           </button>
         </div>
         <button id="cancel-btn" class="button-secondary-touch bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
@@ -637,53 +688,74 @@ export function ExpensesPage() {
             )}
           </div>
           <div className="flex gap-2" role="toolbar" aria-label="Ações da página">
-          <button 
-            aria-label="Buscar despesas"
-            className="button-icon-touch hover:bg-white/10 rounded-md transition-colors p-2 focus-visible"
-            onClick={() => {
-              // Focar no campo de busca
-              const searchInput = document.querySelector('input[placeholder="Buscar despesas..."]') as HTMLInputElement;
-              searchInput?.focus();
-            }}
-          >
-            <Search className="h-4 w-4 text-accessible-light" />
-          </button>
-          <Sheet open={showFilters} onOpenChange={setShowFilters}>
-            <SheetTrigger asChild>
-              <button 
-                aria-label={`Abrir filtros${activeFilterCount > 0 ? ` (${activeFilterCount} ativo${activeFilterCount > 1 ? 's' : ''})` : ''}`}
-                className="relative button-icon-touch hover:bg-white/10 rounded-md transition-colors p-2 focus-visible"
-              >
-                <Filter className="h-4 w-4 text-accessible-light" />
-                {activeFilterCount > 0 && (
-                  <Badge 
-                    variant="destructive" 
-                    className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs"
-                    aria-hidden="true"
+          {/* Unified search input with embedded icons for filter and calendar */}
+          <div className="relative w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accessible-light" aria-hidden="true" />
+            <Input
+              placeholder="Buscar despesas..."
+              value={searchText}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+              className="pl-10 pr-24 h-9 bg-gray-50 border-gray-200 focus:bg-white transition-colors focus-visible"
+              aria-label="Buscar despesas"
+              role="searchbox"
+            />
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+              <Sheet open={showFilters} onOpenChange={setShowFilters}>
+                  <SheetTrigger asChild>
+                  <button
+                    aria-label={`Filtros${activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}`}
+                    className="relative button-icon-touch hover:bg-white/10 rounded-md transition-colors p-1"
                   >
-                    {activeFilterCount}
-                  </Badge>
-                )}
+                    <span aria-hidden="true" className="mr-1">🧪</span>
+                    <Filter className="h-4 w-4 text-gray-500" />
+                    {activeFilterCount > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-2 -right-2 h-4 w-4 p-0 flex items-center justify-center text-xs"
+                        aria-hidden="true"
+                      >
+                        {activeFilterCount}
+                      </Badge>
+                    )}
+                  </button>
+                </SheetTrigger>
+                <SheetContent className="flex flex-col h-full">
+                  <SheetHeader className="shrink-0">
+                    <SheetTitle>Filtros</SheetTitle>
+                    <SheetDescription>
+                      Filtre suas despesas por categoria, forma de pagamento e valor
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="flex-1 min-h-0 -mx-6 px-6">
+                    <ExpenseFiltersForm
+                      filters={activeFilters}
+                      categories={categories}
+                      onFiltersChange={handleFiltersChange}
+                      onReset={handleResetFilters}
+                      activeFilterCount={activeFilterCount}
+                    />
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              {/* Calendar dialog trigger */}
+              <Dialog open={false} onOpenChange={() => {}}>
+                {/* Placeholder to satisfy structure; actual dialog created below */}
+              </Dialog>
+              <button
+                aria-label="Selecionar mês"
+                className="button-icon-touch hover:bg-white/10 rounded-md transition-colors p-1"
+                onClick={() => setShowMonthPicker(true)}
+              >
+                <span aria-hidden="true" className="mr-1">📅</span>
+                <svg className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                </svg>
               </button>
-            </SheetTrigger>
-            <SheetContent className="flex flex-col h-full">
-              <SheetHeader className="shrink-0">
-                <SheetTitle>Filtros</SheetTitle>
-                <SheetDescription>
-                  Filtre suas despesas por categoria, forma de pagamento e valor
-                </SheetDescription>
-              </SheetHeader>
-              <div className="flex-1 min-h-0 -mx-6 px-6">
-                <ExpenseFiltersForm
-                  filters={activeFilters}
-                  categories={categories}
-                  onFiltersChange={handleFiltersChange}
-                  onReset={handleResetFilters}
-                  activeFilterCount={activeFilterCount}
-                />
-              </div>
-            </SheetContent>
-          </Sheet>
+            </div>
+          </div>
         </div>
         </div>
       </header>
@@ -712,39 +784,81 @@ export function ExpensesPage() {
         aria-label="Lista de despesas"
       >{/* pb-24 para não brigar com o FAB */}
 
-      {/* Visualizador de Anexos - Card Clicável */}
-      <button 
-        className="w-full cursor-pointer hover:bg-gray-50 transition-colors rounded-md p-2 border border-gray-200 bg-white touch-target focus-visible"
-        aria-label="Ver 3 anexos de notas fiscais"
-        onClick={() => {
-          // Abrir viewer demo (fallback) quando não houver anexos reais
-          // Se quiser abrir anexos de uma despesa específica, usar handleViewAttachments(expense)
-          const demo: Attachment[] = [
-            { id: 'demo-1', fileName: 'recibo-compra.pdf', mimeType: 'application/pdf', size: 245760, blobRef: 'demo-pdf-blob' },
-            { id: 'demo-2', fileName: 'foto-produto.jpg', mimeType: 'image/jpeg', size: 1024000, blobRef: 'demo-image-blob' },
-            { id: 'demo-3', fileName: 'nota-fiscal.jpg', mimeType: 'image/jpeg', size: 512000, blobRef: 'demo-image-blob-2' }
-          ]
-
-          setViewingAttachments({ attachments: demo, index: 0 })
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Paperclip className="h-5 w-5 text-blue-500" aria-hidden="true" />
-            <span className="text-sm font-medium">3 anexos • Notas fiscais</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4 text-gray-500" aria-hidden="true" />
-            <ChevronRight className="h-4 w-4 text-gray-400" aria-hidden="true" />
+      {/* Compact attachments chip: show only when there are attachments (full-width chip with Ver button) */}
+      {attachmentsSummary.count > 0 && (
+        <div className="py-3">
+          <div className="readable bg-blue-900/90 border border-blue-800 text-white rounded-lg px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-800/60 rounded-full p-2 flex items-center justify-center">
+                  <Paperclip className="h-4 w-4 text-blue-200" aria-hidden="true" />
+                </div>
+                <span className="text-sm font-medium">{attachmentsSummary.count} {attachmentsSummary.isDemo ? 'anexos de exemplo' : 'anexos'}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewingAttachments({ attachments: attachmentsSummary.all, index: 0 })}
+                aria-label={`Ver ${attachmentsSummary.count} anexos`}
+                title={`Ver ${attachmentsSummary.count} anexos`}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md px-3 py-2 shadow-md"
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" />
+                <span className="text-sm font-medium">Ver</span>
+              </button>
+            </div>
           </div>
         </div>
-      </button>
+      )}
 
       {/* Summary Card Otimizado */}
       <ExpenseSummaryCard
         {...summaryData}
         isLoading={expensesLoading}
       />
+
+      {/* Centralized search bar (matches mobile screenshot) */}
+      <div className="py-3">
+        <div className="readable">
+          <div className="relative max-w-2xl mx-auto">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" aria-hidden="true" />
+            <Input
+              placeholder="Buscar despesas..."
+              value={searchText}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+              className="pl-12 pr-28 h-11 bg-zinc-900/70 text-white border border-zinc-800 focus:bg-zinc-900 transition-colors"
+              aria-label="Buscar despesas"
+              role="searchbox"
+            />
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+              <Sheet open={showFilters} onOpenChange={setShowFilters}>
+                <SheetTrigger asChild>
+                  <button
+                    aria-label={`Filtros${activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}`}
+                    className="button-icon-touch hover:bg-white/5 rounded-md transition-colors p-2 text-white"
+                  >
+                    <span aria-hidden="true" className="mr-1">🧪</span>
+                    <Filter className="h-4 w-4 text-white" />
+                  </button>
+                </SheetTrigger>
+              </Sheet>
+
+              <button
+                aria-label="Selecionar mês"
+                className="button-icon-touch hover:bg-white/5 rounded-md transition-colors p-2 text-white"
+                onClick={() => setShowMonthPicker(true)}
+              >
+                <span aria-hidden="true" className="mr-1">📅</span>
+                <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Active Filters - Mobile Optimized */}
       {activeFilterCount > 0 && (
@@ -848,6 +962,27 @@ export function ExpensesPage() {
             onCancel={() => setShowExpenseForm(false)}
             isLoading={false}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Month picker dialog */}
+      <Dialog open={showMonthPicker} onOpenChange={setShowMonthPicker}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Selecionar mês</DialogTitle>
+            <DialogDescription>Escolha o mês para visualizar as despesas</DialogDescription>
+          </DialogHeader>
+          <div className="py-2 flex items-center justify-between gap-2">
+            <Button variant="outline" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>◀</Button>
+            <div className="text-center">
+              <div className="font-medium">{format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR })}</div>
+            </div>
+            <Button variant="outline" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>▶</Button>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setShowMonthPicker(false)}>Cancelar</Button>
+            <Button onClick={() => setShowMonthPicker(false)}>OK</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

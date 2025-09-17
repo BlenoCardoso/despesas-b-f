@@ -22,10 +22,11 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
+        // Keep visual heights but ensure CSS touch-target will enforce min-height:44px
         default: "h-9 px-4 py-2 has-[>svg]:px-3 sm:h-10 sm:px-6",
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5 sm:h-9 sm:px-4",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4 sm:h-11 sm:px-8",
-        icon: "size-9 sm:size-10",
+        icon: "button-icon-touch size-9 sm:size-10",
       },
     },
     defaultVariants: {

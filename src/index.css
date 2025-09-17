@@ -274,8 +274,9 @@ input, textarea, select {
 }
 
 .touch-target-small {
-  min-height: 36px;
-  min-width: 36px;
+  /* Use 44px as the minimum touch target for accessibility (WCAG recommended) */
+  min-height: 44px;
+  min-width: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -291,7 +292,8 @@ input, textarea, select {
 }
 
 .btn-touch-safe-sm {
-  min-height: 36px;
+  /* Small touch-safe button - still use 44px minimum for comfortable tapping */
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

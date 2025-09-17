@@ -110,14 +110,27 @@ export function AttachmentViewer({
   }, [fullscreen, open])
 
   // Função otimizada para carregar blob com cache
-  const loadAttachmentBlob = useCallback(async (blobRef: string): Promise<Blob> => {
+  const loadAttachmentBlob = useCallback(async (blobRefOrUrl: string): Promise<Blob> => {
+    // Sanity
+    if (!blobRefOrUrl) return new Blob()
+
     // Verificar cache primeiro
-    if (attachmentCache.has(blobRef)) {
-      return attachmentCache.get(blobRef)!.blob
+    if (attachmentCache.has(blobRefOrUrl)) {
+      return attachmentCache.get(blobRefOrUrl)!.blob
     }
 
     try {
-      const blob = await expenseService.getAttachmentBlob(blobRef)
+      // Se for uma URL remota, buscar diretamente
+      if (/^https?:\/\//i.test(blobRefOrUrl)) {
+        const resp = await fetch(blobRefOrUrl)
+        if (!resp.ok) throw new Error('Falha ao baixar arquivo remoto')
+        const remoteBlob = await resp.blob()
+        attachmentCache.set(blobRefOrUrl, { blob: remoteBlob, cached: true })
+        return remoteBlob
+      }
+
+      // Caso contrário, tentar carregar do cache local/IndexedDB via expenseService
+      const blob = await expenseService.getAttachmentBlob(blobRefOrUrl)
       if (!blob) {
         // Cria um placeholder visual para anexos não encontrados
         const canvas = document.createElement('canvas')
@@ -137,14 +150,14 @@ export function AttachmentViewer({
         return new Promise(resolve => {
           canvas.toBlob(blob => {
             const finalBlob = blob || new Blob()
-            attachmentCache.set(blobRef, { blob: finalBlob, cached: true })
+            attachmentCache.set(blobRefOrUrl, { blob: finalBlob, cached: true })
             resolve(finalBlob)
           }, 'image/png')
         })
       }
       
       // Armazenar no cache
-      attachmentCache.set(blobRef, { blob, cached: true })
+      attachmentCache.set(blobRefOrUrl, { blob, cached: true })
       return blob
     } catch (error) {
       console.error('Erro ao carregar anexo:', error)
@@ -166,7 +179,7 @@ export function AttachmentViewer({
       return new Promise(resolve => {
         canvas.toBlob(blob => {
           const finalBlob = blob || new Blob()
-          attachmentCache.set(blobRef, { blob: finalBlob, cached: true })
+          attachmentCache.set(blobRefOrUrl, { blob: finalBlob, cached: true })
           resolve(finalBlob)
         }, 'image/png')
       })
@@ -203,7 +216,8 @@ export function AttachmentViewer({
           const attachment = attachments[index]
           
           try {
-            const blob = await loadAttachmentBlob(attachment.blobRef)
+            const refOrUrl = (attachment as any).url || attachment.blobRef || ''
+            const blob = await loadAttachmentBlob(refOrUrl)
             const dataUrl = URL.createObjectURL(blob)
             
             setAttachmentData(prev => {
