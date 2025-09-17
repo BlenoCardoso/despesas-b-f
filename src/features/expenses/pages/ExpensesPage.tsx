@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,19 @@ import {
 } from '@/components/ui/dialog'
 import { 
   Plus, 
-  Search
+  Search,
+  Filter,
+  MoreVertical,
+  TrendingUp,
+  Activity,
+  ChevronRight,
+  Paperclip,
+  Eye,
+  X,
+  FilterX,
+  Download,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -54,6 +66,18 @@ export function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
+  const [headerCollapsed, setHeaderCollapsed] = useState(false)
+
+  // Scroll listener para colapsar header
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrolled = window.scrollY > 8
+      setHeaderCollapsed(scrolled)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Error boundary para capturar erros
   React.useEffect(() => {
@@ -69,7 +93,7 @@ export function ExpensesPage() {
   // Se há erro na página, mostrar mensagem amigável
   if (pageError) {
     return (
-      <div className="container-central space-consistent min-h-full">
+      <div className="readable space-consistent min-h-full">
         <div className="bg-red-50 border border-red-200 rounded-lg padding-consistent-sm mb-4">
           <h3 className="font-semibold text-red-800 mb-2">Ops! Algo deu errado</h3>
           <p className="text-red-700 mb-4">
@@ -426,7 +450,13 @@ export function ExpensesPage() {
         index: 0
       })
     } else {
-      toast.info('Esta despesa não possui anexos')
+      // Mostrar demo attachments quando não houver anexos reais para facilitar testes
+      const demo: Attachment[] = [
+        { id: 'demo-1', fileName: 'recibo-compra.pdf', mimeType: 'application/pdf', size: 245760, blobRef: 'demo-pdf-blob' },
+        { id: 'demo-2', fileName: 'foto-produto.jpg', mimeType: 'image/jpeg', size: 1024000, blobRef: 'demo-image-blob' },
+      ]
+
+      setViewingAttachments({ attachments: demo, index: 0 })
     }
   }
 
@@ -450,13 +480,25 @@ export function ExpensesPage() {
 
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
+    
+    // Criar ícones usando SVG para manter compatibilidade
+    const downloadIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>'
+    const fileTextIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>'
+    const fileSpreadsheetIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>'
+    
     modal.innerHTML = `
       <div class="bg-white p-6 rounded-lg shadow-lg">
         <h3 class="font-semibold mb-4">Escolha o formato de exportação</h3>
-        <div class="flex gap-2 mb-4">
-          <button id="csv-btn" class="button-secondary-touch bg-green-600 text-white rounded hover:bg-green-700 gap-2">⬇️ CSV</button>
-          <button id="excel-btn" class="button-secondary-touch bg-blue-600 text-white rounded hover:bg-blue-700 gap-2">⬇️ Excel</button>
-          <button id="pdf-btn" class="button-secondary-touch bg-red-600 text-white rounded hover:bg-red-700 gap-2">⬇️ PDF</button>
+        <div class="flex flex-col sm:flex-row gap-2 mb-4">
+          <button id="csv-btn" class="button-secondary-touch bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-2">
+            ${fileTextIcon}CSV
+          </button>
+          <button id="excel-btn" class="button-secondary-touch bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+            ${fileSpreadsheetIcon}Excel
+          </button>
+          <button id="pdf-btn" class="button-secondary-touch bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-2">
+            ${downloadIcon}PDF
+          </button>
         </div>
         <button id="cancel-btn" class="button-secondary-touch bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
       </div>
@@ -577,57 +619,47 @@ export function ExpensesPage() {
   }
 
   return (
-    <div className="container-central space-consistent min-h-full">
-      {/* Clean Header - Only Title */}
-      <div className="flex items-center justify-between gap-consistent">
-        <div className="min-w-0 flex-1">
-          <h1 className="font-bold text-gray-900 dark:text-white truncate">
-            Despesas
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 date-text">
-            {format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR })}
-          </p>
-        </div>
-      </div>
-
-
-
-      {/* Visualizador de Anexos */}
-      <AttachmentViewerDemo />
-
-      {/* Summary Card */}
-      <ExpenseSummaryCard
-        {...summaryData}
-        isLoading={expensesLoading}
-      />
-
-      {/* Unified Search Input with Embedded Icons */}
-      <div className="relative">
-        {/* Search icon (left) */}
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        
-        {/* Input field */}
-        <Input
-          placeholder="Buscar despesas..."
-          value={searchText}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
-          className="pl-10 pr-20 h-11"
-        />
-        
-        {/* Action icons (right) */}
-        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-consistent-sm">
-          {/* Filter Icon */}
+    <>
+      {/* Header Compacto e Inteligente */}
+      <header
+        className="appbar sticky z-30 bg-zinc-950/90 backdrop-blur px-3 transition-all duration-200 hidden lg:block"
+        role="banner"
+      >
+  <div className="appbar-inner readable w-full flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="appbar-title text-base font-semibold text-accessible-light truncate">
+              Despesas
+            </h1>
+            {!headerCollapsed && (
+              <p className="text-xs text-accessible-muted truncate">
+                {format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR })}
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2" role="toolbar" aria-label="Ações da página">
+          <button 
+            aria-label="Buscar despesas"
+            className="button-icon-touch hover:bg-white/10 rounded-md transition-colors p-2 focus-visible"
+            onClick={() => {
+              // Focar no campo de busca
+              const searchInput = document.querySelector('input[placeholder="Buscar despesas..."]') as HTMLInputElement;
+              searchInput?.focus();
+            }}
+          >
+            <Search className="h-4 w-4 text-accessible-light" />
+          </button>
           <Sheet open={showFilters} onOpenChange={setShowFilters}>
             <SheetTrigger asChild>
               <button 
-                className="relative button-icon-touch hover:bg-gray-100 rounded-md transition-colors"
-                title="Filtros"
+                aria-label={`Abrir filtros${activeFilterCount > 0 ? ` (${activeFilterCount} ativo${activeFilterCount > 1 ? 's' : ''})` : ''}`}
+                className="relative button-icon-touch hover:bg-white/10 rounded-md transition-colors p-2 focus-visible"
               >
-                <span className="text-lg">🧪</span>
+                <Filter className="h-4 w-4 text-accessible-light" />
                 {activeFilterCount > 0 && (
                   <Badge 
                     variant="destructive" 
                     className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs"
+                    aria-hidden="true"
                   >
                     {activeFilterCount}
                   </Badge>
@@ -652,20 +684,67 @@ export function ExpensesPage() {
               </div>
             </SheetContent>
           </Sheet>
-          
-          {/* Calendar Icon */}
-          <button 
-            className="button-icon-touch hover:bg-gray-100 rounded-md transition-colors"
-            title={`Período: ${format(currentMonth, "MMM yyyy", { locale: ptBR })}`}
-            onClick={() => {
-              // TODO: Implementar seletor de período
-              console.log('Abrir seletor de período');
-            }}
-          >
-            <span className="text-lg">📅</span>
-          </button>
+        </div>
+        </div>
+      </header>
+
+  {/* Barra de Busca Sticky */}
+  <div className="sticky sticky-below-appbar z-20 bg-white/95 backdrop-blur py-2 border-b border-gray-200 hidden lg:block">
+    <div className="readable">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+            <Input
+              placeholder="Buscar despesas..."
+              value={searchText}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+              className="pl-10 h-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors focus-visible"
+              aria-label="Campo de busca de despesas"
+              role="searchbox"
+            />
+          </div>
         </div>
       </div>
+
+      {/* Main Content com Safe Area */}
+      <main 
+        className="safe-bottom content-with-fab readable space-consistent min-h-full"
+        role="main"
+        aria-label="Lista de despesas"
+      >{/* pb-24 para não brigar com o FAB */}
+
+      {/* Visualizador de Anexos - Card Clicável */}
+      <button 
+        className="w-full cursor-pointer hover:bg-gray-50 transition-colors rounded-md p-2 border border-gray-200 bg-white touch-target focus-visible"
+        aria-label="Ver 3 anexos de notas fiscais"
+        onClick={() => {
+          // Abrir viewer demo (fallback) quando não houver anexos reais
+          // Se quiser abrir anexos de uma despesa específica, usar handleViewAttachments(expense)
+          const demo: Attachment[] = [
+            { id: 'demo-1', fileName: 'recibo-compra.pdf', mimeType: 'application/pdf', size: 245760, blobRef: 'demo-pdf-blob' },
+            { id: 'demo-2', fileName: 'foto-produto.jpg', mimeType: 'image/jpeg', size: 1024000, blobRef: 'demo-image-blob' },
+            { id: 'demo-3', fileName: 'nota-fiscal.jpg', mimeType: 'image/jpeg', size: 512000, blobRef: 'demo-image-blob-2' }
+          ]
+
+          setViewingAttachments({ attachments: demo, index: 0 })
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Paperclip className="h-5 w-5 text-blue-500" aria-hidden="true" />
+            <span className="text-sm font-medium">3 anexos • Notas fiscais</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Eye className="h-4 w-4 text-gray-500" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4 text-gray-400" aria-hidden="true" />
+          </div>
+        </div>
+      </button>
+
+      {/* Summary Card Otimizado */}
+      <ExpenseSummaryCard
+        {...summaryData}
+        isLoading={expensesLoading}
+      />
 
       {/* Active Filters - Mobile Optimized */}
       {activeFilterCount > 0 && (
@@ -675,44 +754,60 @@ export function ExpensesPage() {
           exit={{ opacity: 0, height: 0 }}
           className="flex items-center gap-2 flex-wrap"
         >
-          <span className="text-xs text-gray-500 shrink-0">Filtros:</span>
+          <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
+            <FilterX className="h-3 w-3" aria-hidden="true" />
+            <span>Filtros:</span>
+          </div>
           {searchText.trim() && (
             <Badge variant="secondary" className="gap-1 text-xs">
+              <Search className="h-3 w-3" aria-hidden="true" />
               "{searchText.length > 10 ? searchText.substring(0, 10) + '...' : searchText}"
               <button 
                 onClick={() => setSearchText('')}
                 className="touch-target-small ml-1 hover:bg-gray-200 rounded"
-              >×</button>
+                aria-label="Remover filtro de busca"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </Badge>
           )}
           
           {activeFilters.categoryIds?.length && (
             <Badge variant="secondary" className="gap-1 text-xs">
-              {activeFilters.categoryIds.length} cat.
+              🏷️ {activeFilters.categoryIds.length} cat.
               <button 
                 onClick={() => setActiveFilters(prev => ({ ...prev, categoryIds: [] }))}
                 className="touch-target-small ml-1 hover:bg-gray-200 rounded"
-              >×</button>
+                aria-label="Remover filtro de categorias"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </Badge>
           )}
           
           {activeFilters.paymentMethods?.length && (
             <Badge variant="secondary" className="gap-1 text-xs">
-              {activeFilters.paymentMethods.length} pag.
+              💳 {activeFilters.paymentMethods.length} pag.
               <button 
                 onClick={() => setActiveFilters(prev => ({ ...prev, paymentMethods: [] }))}
                 className="touch-target-small ml-1 hover:bg-gray-200 rounded"
-              >×</button>
+                aria-label="Remover filtro de formas de pagamento"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </Badge>
           )}
           
           {(activeFilters.minAmount !== undefined || activeFilters.maxAmount !== undefined) && (
             <Badge variant="secondary" className="gap-1 text-xs">
-              Valor
+              💰 Valor
               <button 
                 onClick={() => setActiveFilters(prev => ({ ...prev, minAmount: undefined, maxAmount: undefined }))}
                 className="touch-target-small ml-1 hover:bg-gray-200 rounded"
-              >×</button>
+                aria-label="Remover filtro de valor"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </Badge>
           )}
           
@@ -787,16 +882,33 @@ export function ExpensesPage() {
         />
       )}
 
-      {/* Floating Action Button (FAB) */}
-      <Button
-        onClick={() => setShowExpenseForm(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 min-h-[56px] min-w-[56px] rounded-full shadow-lg hover:shadow-xl transition-all duration-200 z-50 bg-blue-600 hover:bg-blue-700 active:scale-95 flex items-center justify-center"
-        size="default"
-      >
-        <Plus className="h-6 w-6" />
-        <span className="sr-only">Nova Despesa</span>
-      </Button>
-    </div>
+        {/* Floating Action Button (FAB) */}
+        <Button
+          onClick={() => setShowExpenseForm(true)}
+          className="fixed fab-safe-bottom right-5 h-14 w-14 min-h-[56px] min-w-[56px] rounded-full shadow-2xl hover:shadow-2xl transition-all duration-200 z-50 bg-blue-600 hover:bg-blue-700 active:scale-95 flex items-center justify-center focus-visible"
+          size="default"
+          aria-label="Adicionar nova despesa"
+          style={{
+            boxShadow: '0 8px 25px -8px rgba(59, 130, 246, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+          }}
+        >
+          <Plus className="h-6 w-6" aria-hidden="true" />
+        </Button>
+        {/* Mobile-only floating menu button (fallback) */}
+        <button
+          className="lg:hidden fixed left-4 bottom-5 z-50 h-12 w-12 rounded-full bg-white shadow-md flex items-center justify-center focus-visible"
+          aria-label="Abrir menu"
+          onClick={() => {
+            console.debug('[ExpensesPage] mobile menu button clicked - dispatching event')
+            window.dispatchEvent(new Event('open-mobile-sidebar-forced'))
+          }}
+        >
+          <svg className="h-6 w-6 text-gray-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </main>
+    </>
   )
 }
 

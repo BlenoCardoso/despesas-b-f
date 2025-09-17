@@ -11,14 +11,18 @@
 
 /* Reset base com fluidez */
 html {
-  /* Font size base fluida: 14px em mobile, 16px em desktop */
-  font-size: clamp(14px, 3.125vw, 16px);
+  /* Font size base fluida mais refinada: 14px em mobile, 16px em desktop */
+  font-size: clamp(14px, 1.7vw, 16px);
 }
 
 body {
   /* Texto base legível em todas as telas */
   font-size: clamp(14px, 2.5vw, 16px);
   line-height: 1.5;
+  
+  /* Melhorias de performance e UX */
+  overscroll-behavior-y: contain; /* Evita bounce chato */
+  -webkit-tap-highlight-color: transparent; /* Remove flash azul no iOS */
 }
 
 /* Hierarquia de títulos fluida */
@@ -37,8 +41,8 @@ h2, .text-xl {
 }
 
 h3, .text-lg {
-  /* Seções: 16px mobile → 20px desktop */
-  font-size: clamp(16px, 3.5vw, 20px);
+  /* Títulos refinados: 16px mobile → 20px desktop */
+  font-size: clamp(16px, 2.5vw, 20px);
   line-height: 1.4;
   font-weight: 500;
 }
@@ -170,11 +174,31 @@ input, textarea, select {
   border: 1px solid rgb(252 165 165); /* red-300 */
 }
 
-/* Sistema de Container Central Consistente */
+/* Sistema de Container Central Otimizado */
 .container-central {
-  /* Container com largura máxima para mobile-first */
-  max-width: 640px; /* max-w-screen-sm */
+  /* Container otimizado para legibilidade - evita linhas compridas */
+  max-width: 640px; /* max-w-screen-sm - 640px */
   margin: 0 auto;
+  padding-left: 12px; /* px-3 */
+  padding-right: 12px; /* px-3 */
+  width: 100%;
+}
+
+/* Container central inline para casos específicos */
+.container-inline {
+  /* Equivale a: mx-auto max-w-screen-sm px-3 */
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 640px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* Aliaser mais semântico para uso em componentes que focam leitura */
+.readable {
+  max-width: 640px; /* Limita a largura para melhorar legibilidade */
+  margin-left: auto;
+  margin-right: auto;
   padding-left: 12px; /* px-3 */
   padding-right: 12px; /* px-3 */
   width: 100%;
@@ -302,4 +326,200 @@ input, textarea, select {
   align-items: center;
   justify-content: center;
   padding: 8px;
+}
+
+/* ========================================
+   MELHORIAS DE ACESSIBILIDADE
+   ======================================== */
+
+/* Contraste aprimorado para textos em fundos escuros */
+.text-accessible-light {
+  color: rgba(255, 255, 255, 0.95); /* Contraste 4.5:1 mínimo */
+}
+
+.text-accessible-muted {
+  color: rgba(255, 255, 255, 0.8); /* Para textos secundários */
+}
+
+/* Estados de foco visíveis */
+.focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Skeleton loading states */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, transparent 37%, #f0f0f0 63%);
+  background-size: 400% 100%;
+  animation: skeleton-loading 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: -100% 50%;
+  }
+}
+
+.skeleton-dark {
+  background: linear-gradient(90deg, #374151 25%, transparent 37%, #374151 63%);
+  background-size: 400% 100%;
+  animation: skeleton-loading 1.4s ease-in-out infinite;
+}
+
+/* ========================================
+   SAFE AREA INSETS (iOS/Android notch)
+   ======================================== */
+
+/* Classes utilitárias para safe area */
+.safe-top {
+  padding-top: max(env(safe-area-inset-top), 12px);    /* 12px de respiro mínimo */
+}
+
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+}
+
+.safe-left {
+  padding-left: max(env(safe-area-inset-left), 12px);
+}
+
+.safe-right {
+  padding-right: max(env(safe-area-inset-right), 12px);
+}
+
+/* Suporte para iOS antigo */
+@supports (padding-top: constant(safe-area-inset-top)) {
+  .safe-top { 
+    padding-top: max(constant(safe-area-inset-top), 12px); 
+  }
+  .safe-bottom { 
+    padding-bottom: max(constant(safe-area-inset-bottom), 16px); 
+  }
+  .safe-left { 
+    padding-left: max(constant(safe-area-inset-left), 12px); 
+  }
+  .safe-right { 
+    padding-right: max(constant(safe-area-inset-right), 12px); 
+  }
+}
+
+/* Ensure sticky/fixed elements that use .safe-top are offset by the safe area
+   so they do not overlap the status bar. This targets common positioning values
+   and provides fallbacks for older iOS. */
+:where(.safe-top).sticky, :where(.safe-top).fixed, .safe-top[data-sticky="true"] {
+  top: env(safe-area-inset-top, 0px);
+}
+
+@supports (padding-top: constant(safe-area-inset-top)) {
+  :where(.safe-top).sticky, :where(.safe-top).fixed, .safe-top[data-sticky="true"] {
+    top: constant(safe-area-inset-top);
+  }
+}
+
+/* ========================================
+   APP BAR (Header) SIZING & LAYOUT
+   Ensures a consistent content height (52-56px) while
+   including the device safe-area inset in the overall header height.
+   The variable --appbar-content-height controls the visible appbar
+   (recommended 56px). The header will add the safe-area inset on top
+   so the content area stays consistent across devices with/without notch.
+   ======================================== */
+
+:root {
+  --appbar-content-height: 56px; /* visible content height (52 - 56px allowed) */
+  --appbar-min-content-height: 52px;
+  --appbar-max-content-height: 56px;
+}
+
+.appbar {
+  /* Add the safe area inset to the overall header height so the content
+     region remains the same size. Falls back to 0 when env() is not supported. */
+  --safe-top: env(safe-area-inset-top);
+  padding-top: var(--safe-top, 0px);
+  /* Offset the element when sticky/fixed so it never overlaps the status bar */
+  top: var(--safe-top, 0px);
+  height: calc(var(--appbar-content-height) + var(--safe-top, 0px));
+  min-height: calc(var(--appbar-min-content-height) + var(--safe-top, 0px));
+  max-height: calc(var(--appbar-max-content-height) + var(--safe-top, 0px));
+
+  display: block; /* header element will contain an inner flex row */
+}
+
+/* Inner container that holds the interactive content and keeps a fixed
+   content height regardless of the safe-area inset. Use this to vertically
+   center items and avoid the padding affecting internal alignment. */
+.appbar-inner {
+  height: var(--appbar-content-height);
+  min-height: var(--appbar-min-content-height);
+  max-height: var(--appbar-max-content-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Title styling: compact line-height and no wrapping */
+.appbar-title {
+  line-height: 1; /* compact */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@supports (padding-top: constant(safe-area-inset-top)) {
+  :root {
+    /* support older iOS constant() as fallback for the env() values */
+    --safe-top-const: constant(safe-area-inset-top);
+  }
+  .appbar {
+    padding-top: var(--safe-top-const, 0px);
+    top: var(--safe-top-const, 0px);
+    height: calc(var(--appbar-content-height) + var(--safe-top-const, 0px));
+    min-height: calc(var(--appbar-min-content-height) + var(--safe-top-const, 0px));
+    max-height: calc(var(--appbar-max-content-height) + var(--safe-top-const, 0px));
+  }
+}
+
+/* Sticky element positioned directly below the AppBar content area.
+   This computes top as: appbar-content-height + safe-area-inset-top.
+   Use this class instead of Tailwind's top-14 when you want the element
+   immediately under the visible appbar regardless of device notch. */
+.sticky-below-appbar {
+  top: calc(var(--appbar-content-height) + env(safe-area-inset-top, 0px));
+}
+
+@supports (padding-top: constant(safe-area-inset-top)) {
+  .sticky-below-appbar {
+    top: calc(var(--appbar-content-height) + constant(safe-area-inset-top));
+  }
+}
+
+/* FAB and content spacing helpers */
+:root {
+  --fab-height: 56px; /* matches h-14 */
+  --fab-margin: 20px; /* visual margin from edge */
+}
+
+/* Positions the FAB above the safe-area bottom + visual margin */
+.fab-safe-bottom {
+  bottom: calc(var(--fab-margin) + env(safe-area-inset-bottom, 0px));
+}
+
+@supports (padding-top: constant(safe-area-inset-top)) {
+  .fab-safe-bottom {
+    bottom: calc(var(--fab-margin) + constant(safe-area-inset-bottom));
+  }
+}
+
+/* Ensure main content has enough bottom padding so lists aren't covered by the FAB */
+.content-with-fab {
+  padding-bottom: calc(var(--fab-height) + var(--fab-margin) + env(safe-area-inset-bottom, 0px) + 8px);
+}
+
+@supports (padding-top: constant(safe-area-inset-top)) {
+  .content-with-fab {
+    padding-bottom: calc(var(--fab-height) + var(--fab-margin) + constant(safe-area-inset-bottom) + 8px);
+  }
 }

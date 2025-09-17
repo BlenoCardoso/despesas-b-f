@@ -1,9 +1,6 @@
 import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Check, AlertCircle } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/core/utils/formatters'
+import { TrendingUp, TrendingDown, AlertTriangle, Check, AlertCircle, Activity } from 'lucide-react'
+import { formatCurrency } from '@/core/utils/formatters'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
@@ -69,22 +66,39 @@ export function ExpenseSummaryCard({
 
   if (isLoading) {
     return (
-      <Card className="w-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="font-semibold">Resumo do Mês</CardTitle>
-        </CardHeader>
-        <CardContent className="space-consistent">
-          <div className="animate-pulse space-consistent-sm">
-            <div className="h-8 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-2 bg-gray-200 rounded"></div>
-            <div className="grid grid-cols-2 gap-consistent">
-              <div className="h-16 bg-gray-200 rounded"></div>
-              <div className="h-16 bg-gray-200 rounded"></div>
+      <section className="rounded-2xl bg-zinc-900/60 p-3" role="status" aria-label="Carregando resumo do mês">
+        <div className="flex items-center justify-between mb-0.5">
+          <div className="h-4 w-20 bg-zinc-700 rounded skeleton"></div>
+          <div className="h-5 w-16 bg-zinc-700 rounded skeleton"></div>
+        </div>
+
+        {/* Total skeleton */}
+        <div className="h-7 w-28 bg-zinc-700 rounded skeleton mb-1.5"></div>
+
+        {/* Mini-cards skeleton */}
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-zinc-800/60 p-2 flex items-center gap-2">
+            <div className="h-4 w-4 bg-zinc-600 rounded skeleton shrink-0"></div>
+            <div className="min-w-0 space-y-1">
+              <div className="h-3 w-12 bg-zinc-600 rounded skeleton"></div>
+              <div className="h-4 w-14 bg-zinc-600 rounded skeleton"></div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="rounded-xl bg-zinc-800/60 p-2 flex items-center gap-2">
+            <div className="h-4 w-4 bg-zinc-600 rounded skeleton shrink-0"></div>
+            <div className="min-w-0 space-y-1">
+              <div className="h-3 w-14 bg-zinc-600 rounded skeleton"></div>
+              <div className="h-4 w-16 bg-zinc-600 rounded skeleton"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress bar skeleton */}
+        <div className="mt-2">
+          <div className="h-2 w-full bg-zinc-800 rounded skeleton"></div>
+        </div>
+      </section>
     )
   }
 
@@ -94,80 +108,72 @@ export function ExpenseSummaryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="w-full">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="font-semibold">Resumo do Mês</CardTitle>
-            {budget > 0 && (
-              <Badge 
-                variant="outline" 
-                className={cn(
-                  "flex items-center gap-1 font-medium border",
-                  budgetStatus.color === 'destructive' && "badge-error",
-                  budgetStatus.color === 'warning' && "badge-warning",
-                  budgetStatus.color === 'success' && "badge-success"
-                )}
-              >
-                <span className="text-sm">{budgetStatus.emoji}</span>
-                <span>{budgetStatus.text}</span>
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        
-        <CardContent className="space-consistent-sm">
-          {/* Total gasto - Grande e centralizado */}
-          <div className="text-center">
-            <div className="text-gray-500 mb-1">Total gasto</div>
-            <motion.div 
-              className="monetary-large font-bold text-gray-900"
-              key={totalMonth}
-              initial={{ scale: 1.1 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.2 }}
-            >
-              {formatCurrency(totalMonth)}
-            </motion.div>
-          </div>
+      <section className="rounded-2xl bg-zinc-900/60 p-3">
+        <div className="flex items-center justify-between mb-0.5">
+          <h2 className="text-sm font-medium text-white">Resumo do Mês</h2>
+          {budget > 0 && (
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-xs",
+              budgetStatus.color === 'destructive' && "bg-red-900/40 text-red-200",
+              budgetStatus.color === 'warning' && "bg-yellow-900/40 text-yellow-200", 
+              budgetStatus.color === 'success' && "bg-emerald-900/40 text-emerald-200"
+            )}>
+              {budgetStatus.emoji} {budgetStatus.text}
+            </span>
+          )}
+        </div>
+          {/* Total em uma linha */}
+        <motion.div 
+          className="text-2xl font-bold leading-tight text-white"
+          key={totalMonth}
+          initial={{ scale: 1.1 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 0.2 }}
+        >
+          {formatCurrency(totalMonth)}
+        </motion.div>
           
-          {/* Grid 2x2 com mini-KPIs */}
-          <div className="grid grid-cols-2 gap-consistent-sm">
-            <div className="text-center padding-consistent-sm bg-gray-50 rounded-md">
-              <div className="text-gray-500 mb-1">Média/dia</div>
-              <div className="monetary-small font-semibold">{formatCurrency(dailyAverage)}</div>
+          {/* Mini-cards com ícones */}
+          <div className="mt-1 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl bg-zinc-800/60 p-2 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs text-gray-300">Média/dia</div>
+                <div className="text-sm font-semibold truncate text-white">{formatCurrency(dailyAverage)}</div>
+              </div>
             </div>
             
-            <div className="text-center padding-consistent-sm bg-gray-50 rounded-md">
-              <div className="text-gray-500 mb-1">Projeção</div>
-              <div className={cn(
-                "monetary-small font-semibold",
-                isProjectionOverBudget && "text-red-500"
-              )}>
-                {formatCurrency(projection)}
+            <div className="rounded-xl bg-zinc-800/60 p-2 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs text-gray-300">Projeção</div>
+                <div className={cn(
+                  "text-sm font-semibold truncate",
+                  isProjectionOverBudget ? "text-red-400" : "text-white"
+                )}>
+                  {formatCurrency(projection)}
+                </div>
               </div>
             </div>
           </div>
 
           {/* Progress bar do orçamento - compacto */}
           {budget > 0 && (
-            <div className="space-consistent-sm">
-              <div className="flex items-center justify-between text-gray-600">
-                <span>Orçamento {formatCurrency(budget)}</span>
-                <span>{formatPercentage(budgetUsage)}</span>
+            <div className="mt-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                <div 
+                  className={cn(
+                    "h-full transition-all duration-300",
+                    isOverBudget && "bg-red-500",
+                    isNearLimit && "bg-yellow-500",
+                    !isOverBudget && !isNearLimit && "bg-emerald-500"
+                  )}
+                  style={{ width: `${Math.min(budgetUsage, 100)}%` }}
+                />
               </div>
-              <Progress 
-                value={Math.min(budgetUsage, 100)} 
-                className={cn(
-                  "h-2 transition-colors duration-300",
-                  isOverBudget && "[&>div]:bg-red-500 bg-red-100",
-                  isNearLimit && "[&>div]:bg-yellow-500 bg-yellow-100",
-                  !isOverBudget && !isNearLimit && "[&>div]:bg-green-500 bg-green-100"
-                )}
-              />
             </div>
           )}
-        </CardContent>
-      </Card>
+      </section>
     </motion.div>
   )
 }

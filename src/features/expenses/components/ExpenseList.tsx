@@ -160,7 +160,7 @@ export function ExpenseList({
   }
 
   return (
-    <div className="space-consistent">
+    <div className="space-y-3">
       {groupedExpenses.map(group => (
         <motion.div
           key={group.date}
@@ -170,12 +170,12 @@ export function ExpenseList({
         >
           <Card>
             <CardContent className="p-0">
-              {/* Compact Group Header */}
+              {/* Compact Group Header - Área clicável 100% */}
               <button
                 onClick={() => toggleGroup(group.date)}
-                className="w-full btn-touch-safe padding-consistent-sm justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
+                className="w-full flex items-center justify-between py-3 px-3 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation min-h-[44px]"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <motion.div
                     animate={{ rotate: expandedGroups.has(group.date) ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
@@ -183,16 +183,16 @@ export function ExpenseList({
                   >
                     <ChevronDown className="h-4 w-4 text-gray-500" />
                   </motion.div>
-                  <div className="flex items-center gap-consistent-sm min-w-0 flex-1">
-                    <h3 className="font-medium date-text truncate">{group.label}</h3>
-                    <span className="text-gray-500 shrink-0">•</span>
-                    <span className="text-gray-600 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <h3 className="font-medium text-sm truncate">{group.label}</h3>
+                    <span className="text-gray-400 shrink-0">•</span>
+                    <span className="text-xs text-gray-500 shrink-0">
                       {group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}
                     </span>
                   </div>
                 </div>
                 <div className="shrink-0 ml-2">
-                  <span className="monetary-small font-semibold">{formatCurrency(group.total)}</span>
+                  <span className="text-sm font-semibold">{formatCurrency(group.total)}</span>
                 </div>
               </button>
 
