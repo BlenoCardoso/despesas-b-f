@@ -22,17 +22,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { 
-  CalendarIcon, 
-  Upload, 
-  X, 
+  CalendarIcon,
   Plus,
   Repeat,
-  CreditCard,
-  FileText
+  CreditCard
 } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -94,7 +90,7 @@ export function ExpenseForm({
   onCancel,
   isLoading = false,
 }: ExpenseFormProps) {
-  const [attachments, setAttachments] = useState<File[]>([])
+  // Removido attachments via feature flag
   const [showRecurrence, setShowRecurrence] = useState(!!expense?.recurrence)
   const [showInstallment, setShowInstallment] = useState(!!expense?.installment)
   const [amountInput, setAmountInput] = useState('')
@@ -134,22 +130,12 @@ export function ExpenseForm({
     form.setValue('amount', numericValue)
   }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
-    setAttachments(prev => [...prev, ...files])
-  }
-
-  const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index))
-  }
-
   const handleSubmit = (data: ExpenseFormValues) => {
     console.log('📝 EXPENSE FORM - handleSubmit chamado');
     console.log('📝 Dados do form:', data);
     
     const formData: ExpenseFormData = {
       ...data,
-      attachments: attachments.length > 0 ? attachments : undefined,
       recurrence: showRecurrence ? data.recurrence : undefined,
       installment: showInstallment ? data.installment : undefined,
     }
@@ -328,55 +314,7 @@ export function ExpenseForm({
               )}
             />
 
-            {/* Attachments */}
-            <div className="space-y-3">
-              <Label>Anexos</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="btn-touch-safe"
-                  onClick={() => document.getElementById('file-upload')?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Adicionar arquivo
-                </Button>
-                <input
-                  id="file-upload"
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </div>
-              
-              {attachments.length > 0 && (
-                <div className="space-y-2">
-                  {attachments.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-muted/50 border rounded">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        <span className="text-sm">{file.name}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {(file.size / 1024 / 1024).toFixed(1)} MB
-                        </Badge>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="button-icon-touch"
-                        onClick={() => removeAttachment(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Attachments section removed via feature flag */}
 
             <Separator />
 

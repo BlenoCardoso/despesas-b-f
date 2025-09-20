@@ -1,55 +1,66 @@
 import { BaseEntity } from '@/types/global'
+import { ATTACHMENTS_ENABLED } from '@/config/features'
 
 export interface Document extends BaseEntity {
   title: string
-  fileName: string
-  mimeType: string
-  fileSize: number // Consistente com documentService
-  fileUrl: string
-  blobRef: string // referência para IndexedDB
   tags: string[]
   expiryDate?: Date
   description?: string
   category: string
   isImportant?: boolean
+  ...(ATTACHMENTS_ENABLED ? {
+    fileName: string
+    mimeType: string
+    fileSize: number
+    fileUrl: string
+    blobRef: string
+  } : {})
 }
 
 export interface DocumentFormData {
   title: string
-  file?: File
   tags: string[]
   expiryDate?: Date
   description?: string
   category: string
   isImportant?: boolean
+  ...(ATTACHMENTS_ENABLED ? {
+    file?: File
+  } : {})
 }
 
 export interface DocumentFilter {
   searchText?: string
-  mimeTypes?: string[]
   tags?: string[]
   categories?: string[]
   hasExpiryDate?: boolean
   expiringWithinDays?: number
-  sizeMin?: number
-  sizeMax?: number
+  ...(ATTACHMENTS_ENABLED ? {
+    mimeTypes?: string[]
+    sizeMin?: number
+    sizeMax?: number
+  } : {})
 }
 
 export interface DocumentGroup {
   category: string
   documents: Document[]
-  totalSize: number
+  ...(ATTACHMENTS_ENABLED ? {
+    totalSize: number
+  } : {})
   count: number
 }
 
 export interface DocumentStats {
   totalDocuments: number
-  totalSize: number
-  averageSize: number
   expiringDocuments: number
   byCategory: Record<string, number>
-  byMimeType: Record<string, number>
   byTag: Record<string, number>
+  ...(ATTACHMENTS_ENABLED ? {
+    totalSize: number
+    averageSize: number
+    byMimeType: Record<string, number>
+  } : {})
 }
 
 export interface DocumentExpiryAlert {
@@ -77,18 +88,17 @@ export interface DocumentNotification {
 
 export type DocumentSortBy = 
   | 'title'
-  | 'fileName'
-  | 'size'
   | 'createdAt'
   | 'expiryDate'
   | 'category'
+  | ...(ATTACHMENTS_ENABLED ? ['fileName', 'size'] : [])
 
 export type DocumentSortOrder = 'asc' | 'desc'
 
 export interface DocumentListOptions {
   sortBy: DocumentSortBy
   sortOrder: DocumentSortOrder
-  groupBy: 'category' | 'mimeType' | 'tag' | 'none'
+  groupBy: 'category' | ...(ATTACHMENTS_ENABLED ? ['mimeType'] : []) | 'tag' | 'none'
   filter: DocumentFilter
   page: number
   pageSize: number
@@ -102,19 +112,13 @@ export interface DocumentExportData extends Document {
 
 export interface DocumentImportData {
   title: string
-  fileName: string
   tags: string
   expiryDate?: string
   description?: string
   category: string
-}
-
-export interface DocumentPreview {
-  id: string
-  type: 'image' | 'pdf' | 'text' | 'unsupported'
-  content?: string // para texto
-  imageUrl?: string // para imagem/PDF
-  pages?: number // para PDF
+  ...(ATTACHMENTS_ENABLED ? {
+    fileName: string
+  } : {})
 }
 
 export interface DocumentCategory {

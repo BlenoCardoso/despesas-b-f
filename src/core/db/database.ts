@@ -1,21 +1,24 @@
 import Dexie, { Table } from 'dexie'
-import { Expense } from '@/features/expenses/types'
+import { Expense } from '@/features/expenses/types/expense'
+import { HouseholdSplitSettings, SettleUpRecord } from '@/features/expenses/types/balance'
 import { Task } from '@/features/tasks/types'
 import { Document } from '@/features/docs/types'
 import { Medication, MedicationIntake } from '@/features/medications/types'
 import { CalendarEvent } from '@/features/calendar/types'
 import type { Notification, NotificationPreferences } from '@/features/notifications/types'
 import { 
-  Household, 
-  User, 
   Category, 
   Budget, 
   AppSettings
 } from '@/types/global'
+import { Household, HouseholdMember, HouseholdInvite } from '@/features/households/types'
+import { User } from '@/core/types/user'
 
 export interface DatabaseSchema {
   // Core entities
   households: Table<Household>
+  householdMembers: Table<HouseholdMember>
+  householdInvites: Table<HouseholdInvite>
   users: Table<User>
   categories: Table<Category>
   budgets: Table<Budget>
@@ -37,11 +40,17 @@ export interface DatabaseSchema {
   
   // Blobs for file storage
   blobs: Table<{ id: string; data: Blob; mimeType: string; size: number }>
+
+  // Expense sharing
+  householdSplitSettings: Table<HouseholdSplitSettings>
+  settleUpRecords: Table<SettleUpRecord>
 }
 
 export class AppDatabase extends Dexie {
   // Core entities
   households!: Table<Household>
+  householdMembers!: Table<HouseholdMember>
+  householdInvites!: Table<HouseholdInvite>
   users!: Table<User>
   categories!: Table<Category>
   budgets!: Table<Budget>
@@ -53,6 +62,10 @@ export class AppDatabase extends Dexie {
   medications!: Table<Medication>
   calendarEvents!: Table<CalendarEvent>
   medicationIntakes!: Table<MedicationIntake>
+
+  // Expense sharing
+  householdSplitSettings!: Table<HouseholdSplitSettings>
+  settleUpRecords!: Table<SettleUpRecord>
   
   // Notifications
   notifications!: Table<Notification>
@@ -69,8 +82,10 @@ export class AppDatabase extends Dexie {
     
     this.version(1).stores({
       // Core entities
-      households: '++id, name, createdAt',
-      users: '++id, name, email, householdId, createdAt',
+      households: '++id, ownerId, name, createdAt, updatedAt',
+      householdMembers: '++id, [householdId+userId], householdId, userId, role, joinedAt',
+      householdInvites: '++id, householdId, code, createdBy, createdAt, expiresAt, maxUses, usedCount, isRevoked',
+      users: '++id, name, email, createdAt',
       categories: '++id, name, householdId, createdAt',
       budgets: '++id, householdId, categoryId, month, amount, createdAt',
       
@@ -101,7 +116,7 @@ export class AppDatabase extends Dexie {
       medicationIntakes: '++id, medicationId, dateTimePlanned, dateTimeTaken, status, [medicationId+dateTimePlanned], [medicationId+status]',
       notifications: '++id, householdId, userId, type, status, scheduledFor, createdAt, [householdId+status], [type+scheduledFor], [status+scheduledFor]',
       notificationPreferences: '++id, userId, householdId, createdAt, [userId+householdId]'
-    }).upgrade(tx => {
+    }).upgrade(() => {
       // Migration logic if needed
       console.log('Upgrading database to version 2...')
     })
@@ -116,10 +131,10 @@ export class AppDatabase extends Dexie {
       console.log('Upgrading database to version 3...')
       // Add syncVersion field to existing records
       return Promise.all([
-        tx.table('expenses').toCollection().modify({ syncVersion: 1 }),
-        tx.table('tasks').toCollection().modify({ syncVersion: 1 }),
-        tx.table('documents').toCollection().modify({ syncVersion: 1 }),
-        tx.table('medications').toCollection().modify({ syncVersion: 1 })
+        tx.table('expenses').toCollection().modify(item => { item.syncVersion = 1 }),
+        tx.table('tasks').toCollection().modify(item => { item.syncVersion = 1 }),
+        tx.table('documents').toCollection().modify(item => { item.syncVersion = 1 }),
+        tx.table('medications').toCollection().modify(item => { item.syncVersion = 1 })
       ])
     })
 
@@ -127,25 +142,107 @@ export class AppDatabase extends Dexie {
     this.version(4).stores({
       notifications: '++id, householdId, userId, type, status, priority, scheduledFor, sentAt, readAt, createdAt, expiresAt, [householdId+status], [type+scheduledFor], [status+scheduledFor], [priority+status]',
       notificationPreferences: '++id, userId, householdId, enableInApp, enablePush, createdAt, updatedAt, [userId+householdId]'
-    }).upgrade(tx => {
+    }).upgrade(() => {
       console.log('Upgrading database to version 4 - Adding notification system...')
     })
 
     // Version 5: Add calendar events
     this.version(5).stores({
       calendarEvents: '++id, householdId, userId, title, startDate, endDate, category, isImportant, isAllDay, createdAt, updatedAt, deletedAt, syncVersion, [householdId+startDate], [householdId+endDate], [category+startDate], [isImportant+startDate], [deletedAt+updatedAt]'
-    }).upgrade(tx => {
+    }).upgrade(() => {
       console.log('Upgrading database to version 5 - Adding calendar events...')
+    })
+
+    // Version 6: Add expense sharing
+    this.version(6).stores({
+      // Nova tabela para configurações de divisão de despesas
+      householdSplitSettings: '++id, householdId, unifyExpenses, updatedAt',
+      // Nova tabela para registrar acertos de contas
+      settleUpRecords: '++id, householdId, fromMemberId, toMemberId, amount, month, year, settledAt, [householdId+month+year]',
+      // Atualiza expenses para suportar compartilhamento
+      expenses: '++id, householdId, paidById, title, amount, categoryId, date, isShared, settledRecordId, settledAt, createdAt, updatedAt, deletedAt, syncVersion, [householdId+date], [categoryId+date], [deletedAt+updatedAt], [settledRecordId+settledAt]'
+    }).upgrade(() => {
+      console.log('Upgrading database to version 6 - Adding expense sharing...')
     })
   }
 
   // Helper methods for common operations
+  // Métodos relacionados a households
+  async getHouseholdWithMembers(id: string) {
+    const household = await this.households.get(id)
+    if (!household) return null
+
+    const members = await this.householdMembers
+      .where('householdId')
+      .equals(id)
+      .toArray()
+
+    const memberDetails = await Promise.all(
+      members.map(async member => {
+        const user = await this.users.get(member.userId)
+        return { ...member, user }
+      })
+    )
+
+    return {
+      ...household,
+      members: memberDetails
+    }
+  }
+
   async getCurrentHousehold(): Promise<Household | undefined> {
     return await this.households.orderBy('createdAt').last()
   }
 
+  // Verificar se um usuário é membro de uma household
+  async isHouseholdMember(householdId: string, userId: string): Promise<boolean> {
+    const member = await this.householdMembers
+      .where(['householdId', 'userId'])
+      .equals([householdId, userId])
+      .first()
+    
+    return !!member
+  }
+
+  // Verificar role do membro
+  async getMemberRole(householdId: string, userId: string): Promise<string | null> {
+    const member = await this.householdMembers
+      .where(['householdId', 'userId'])
+      .equals([householdId, userId])
+      .first()
+    
+    return member?.role || null
+  }
+
   async getCurrentUser(): Promise<User | undefined> {
     return await this.users.orderBy('createdAt').last()
+  }
+
+  // Métodos para cálculos com expenses
+  async sumHouseholdExpenses(options: {
+    householdId: string 
+    startDate?: Date
+    endDate?: Date
+    categoryId?: string
+  }): Promise<number> {
+    let query = this.expenses
+      .where('householdId')
+      .equals(options.householdId)
+
+    if (options.startDate) {
+      query = query.and(expense => expense.date >= options.startDate!)
+    }
+
+    if (options.endDate) {
+      query = query.and(expense => expense.date <= options.endDate!)
+    }
+
+    if (options.categoryId) {
+      query = query.and(expense => expense.categoryId === options.categoryId)
+    }
+
+    const expenses = await query.toArray()
+    return expenses.reduce((sum, expense) => sum + expense.amount, 0)
   }
 
   async getActiveExpenses(householdId: string): Promise<Expense[]> {

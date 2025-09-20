@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useInView } from 'react-intersection-observer'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +12,8 @@ import {
   Calendar,
   CreditCard,
   Tag,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -21,91 +23,124 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Spinner } from '@/components/ui/spinner'
+import { toast } from '@/components/ui/toast'
 import { formatCurrency, formatDateGroup, formatPaymentMethod } from '@/core/utils/formatters'
-import { Expense, ExpenseGroup } from '../types'
+import type { Expense } from '@/types'
+import type { ExpenseGroup, FlexibleExpense } from '../types/expense'
 import { cn } from '@/lib/utils'
 import { parseISO, format } from 'date-fns'
+import { useExpensesInfinite } from '../hooks/useExpensesInfinite'
+import { deleteExpense, undoExpenseDelete } from '../services/expense-service'
 
-// Tipo temporário que aceita tanto o formato local quanto o Firebase
-type FlexibleExpense = Expense & {
-  description?: string;
-  createdAt?: Date;
-  category?: string;
-  categoryId?: string;
+// Default payment method when not specified
+const DEFAULT_PAYMENT_METHOD = "dinheiro"
+
+// Interfaces específicas para este componente
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon?: string
 }
 
 interface ExpenseListProps {
-  expenses: FlexibleExpense[]
+  householdId: string
+  month?: string
+  categoryId?: string
+  memberId?: string
   categories: Array<{ id: string; name: string; icon: string; color: string }>
   onEdit?: (expense: FlexibleExpense) => void
   onDuplicate?: (expense: FlexibleExpense) => void
   onDelete?: (expense: FlexibleExpense) => void
   onViewAttachments?: (expense: FlexibleExpense) => void
-  isLoading?: boolean
   emptyMessage?: string
 }
 
 export function ExpenseList({
-  expenses,
+  householdId,
+  month,
+  categoryId,
+  memberId,
   categories,
   onEdit,
   onDuplicate,
   onDelete,
   onViewAttachments,
-  isLoading = false,
   emptyMessage = "Nenhuma despesa encontrada",
 }: ExpenseListProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
+  // Setup infinite query
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch
+  } = useExpensesInfinite({
+    householdId,
+    month,
+    categoryId,
+    memberId
+  })
+
+  // Setup intersection observer for infinite scroll
+  const { ref } = useInView({
+    threshold: 0.1,
+    onChange: (visible: boolean) => {
+      if (visible && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage()
+      }
+    }
+  })
+
   // Group expenses by date
   const groupedExpenses = React.useMemo(() => {
+    if (!data) return []
+
     const groups: Record<string, ExpenseGroup> = {}
 
-    expenses.forEach(expense => {
-      try {
-        // Usar createdAt em vez de date para despesas do Firebase
-        let expenseDate: Date;
-        const flexExpense = expense as any;
-        
-        if (flexExpense.createdAt) {
-          expenseDate = flexExpense.createdAt instanceof Date ? flexExpense.createdAt : new Date(flexExpense.createdAt);
-        } else if (expense.date) {
-          expenseDate = typeof expense.date === 'string' ? parseISO(expense.date) : expense.date;
-        } else {
-          expenseDate = new Date(); // Fallback para data atual
-        }
-        
-        // Verificar se a data é válida antes de formatar
-        if (isNaN(expenseDate.getTime())) {
-          console.warn('⚠️ Data inválida encontrada na despesa:', expense.id);
-          expenseDate = new Date(); // Usar data atual como fallback
-        }
-        
-        const dateKey = format(expenseDate, 'yyyy-MM-dd')
-        const dateLabel = formatDateGroup(expenseDate)
-
-        if (!groups[dateKey]) {
-          groups[dateKey] = {
-            date: dateKey,
-            label: dateLabel,
-            expenses: [],
-            total: 0,
+    data.pages.forEach((page: { items: Expense[] }) => {
+      page.items.forEach((expense) => {
+        try {
+          // Parse date string to Date object
+          const expenseDate = parseISO(expense.date)
+          
+          // Skip if date is invalid
+          if (isNaN(expenseDate.getTime())) {
+            console.warn('⚠️ Data inválida encontrada na despesa:', expense.id)
+            return
           }
-        }
+          
+          const dateKey = format(expenseDate, 'yyyy-MM-dd')
+          const dateLabel = formatDateGroup(expenseDate)
 
-        groups[dateKey].expenses.push(expense)
-        groups[dateKey].total += expense.amount
-      } catch (error) {
-        console.error('❌ Erro ao processar despesa no agrupamento:', expense.id, error);
-        // Pular esta despesa se há erro
-      }
+          if (!groups[dateKey]) {
+            groups[dateKey] = {
+              date: dateKey,
+              label: dateLabel,
+              expenses: [],
+              total: 0,
+            }
+          }
+
+          groups[dateKey].expenses.push(expense)
+          groups[dateKey].total += expense.amount
+        } catch (error) {
+          console.error('❌ Erro ao processar despesa no agrupamento:', expense.id, error);
+          // Pular esta despesa se há erro
+        }
+      })
     })
 
     // Sort groups by date (newest first)
     return Object.values(groups).sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )
-  }, [expenses])
+  }, [data])
 
   const toggleGroup = (dateKey: string) => {
     const newExpanded = new Set(expandedGroups)
@@ -125,7 +160,8 @@ export function ExpenseList({
     }
   }
 
-  if (isLoading) {
+  // Loading state
+  if (isLoading && !data?.pages?.length) {
     return (
       <div className="space-consistent">
         {[1, 2, 3].map(i => (
@@ -145,7 +181,24 @@ export function ExpenseList({
     )
   }
 
-  if (groupedExpenses.length === 0) {
+  // Error state
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="padding-consistent-lg text-center">
+          <div className="text-destructive">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
+            <p className="font-medium mb-2">Erro ao carregar despesas</p>
+            <p className="text-sm mb-4">{error instanceof Error ? error.message : 'Erro desconhecido'}</p>
+            <Button onClick={() => refetch()}>Tentar novamente</Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Empty state
+  if (!data?.pages[0]?.items.length) {
     return (
       <Card>
         <CardContent className="padding-consistent-lg text-center">
@@ -170,7 +223,7 @@ export function ExpenseList({
         >
           <Card>
             <CardContent className="p-0">
-              {/* Compact Group Header - Área clicável 100% */}
+              {/* Compact Group Header */}
               <button
                 onClick={() => toggleGroup(group.date)}
                 className="w-full flex items-center justify-between py-3 px-3 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation min-h-[44px]"
@@ -227,6 +280,15 @@ export function ExpenseList({
           </Card>
         </motion.div>
       ))}
+
+      {/* Infinite scroll trigger and loading indicator */}
+      <div ref={ref} className="h-8 overflow-hidden">
+        {isFetchingNextPage && (
+          <div className="flex justify-center items-center p-4">
+            <Spinner />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -240,6 +302,8 @@ interface ExpenseItemProps {
   onViewAttachments?: (expense: FlexibleExpense) => void
   isLast?: boolean
 }
+
+// Using the imported FlexibleExpense type
 
 function ExpenseItem({
   expense,
@@ -305,7 +369,7 @@ function ExpenseItem({
                 {/* Payment method - compact */}
                 <div className="flex items-center gap-consistent-sm text-gray-500 mt-0.5">
                   <CreditCard className="h-3 w-3" />
-                  <span className="truncate">{formatPaymentMethod(expense.paymentMethod)}</span>
+                  <span className="truncate">{formatPaymentMethod(expense.paymentMethod || DEFAULT_PAYMENT_METHOD)}</span>
                   
                   {(hasRecurrence || hasInstallment) && (
                     <>

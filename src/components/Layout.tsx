@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge'
 import {
   CreditCard,
   CheckSquare,
-  FileText,
   Pill,
   Calendar,
   BarChart3,
@@ -37,12 +36,6 @@ const navigation = [
     name: 'Tarefas',
     href: '/tasks',
     icon: CheckSquare,
-    badge: 0,
-  },
-  {
-    name: 'Documentos',
-    href: '/documents',
-    icon: FileText,
     badge: 0,
   },
   {

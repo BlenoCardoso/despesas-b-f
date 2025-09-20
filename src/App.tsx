@@ -9,7 +9,6 @@ import { InstallPrompt } from './components/PWAStatus'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ExpensesPage } from './features/expenses/pages/ExpensesPage'
 import { TasksPage } from './features/tasks/pages/TasksPage'
-import { DocumentsPage } from './features/docs/pages/DocumentsPage'
 import { CalendarPage } from './features/calendar/pages/CalendarPage'
 import { MedicationsPage } from './features/medications/pages/MedicationsPage'
 import { ReportsPage } from './features/reports/pages/ReportsPage'
@@ -102,7 +101,6 @@ function App() {
                       <Route index element={<Navigate to="/expenses" replace />} />
                       <Route path="expenses" element={<ExpensesPage />} />
                       <Route path="tasks" element={<TasksPage />} />
-                      <Route path="documents" element={<DocumentsPage />} />
                       <Route path="medications" element={<MedicationsPage />} />
                       <Route path="calendar" element={<CalendarPage />} />
                       <Route path="reports" element={<ReportsPage />} />

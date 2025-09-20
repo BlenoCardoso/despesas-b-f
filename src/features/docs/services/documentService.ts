@@ -1,14 +1,25 @@
 import { db } from '@/core/db/database'
-import { Document, DocumentFormData, DocumentFilter, DocumentListOptions } from '../types'
+import type { Document, DocumentFormData, DocumentFilter, DocumentListOptions, DocumentStats } from '../types'
+import { hasAttachment, hasFileFilter, hasFileStats } from '../types/guards'
+import { blobStorage } from './blobStorage'
 import { generateId } from '@/core/utils/id'
 import { parseISO } from 'date-fns'
+import { ATTACHMENTS_ENABLED } from '@/config/features'
+
+type DocumentWithAttachment = Document & {
+  fileName: string
+  mimeType: string
+  fileSize: number
+  fileUrl: string
+  blobRef: string
+}
 
 export class DocumentService {
   /**
    * Create a new document
    */
   async createDocument(data: DocumentFormData, householdId: string, userId: string): Promise<Document> {
-    const document: Document = {
+    const document = {
       id: generateId(),
       householdId,
       userId,
@@ -16,27 +27,26 @@ export class DocumentService {
       description: data.description,
       category: data.category,
       tags: data.tags || [],
-      fileUrl: '',
-      fileName: '',
-      fileSize: 0,
-      mimeType: '',
-      blobRef: '',
       expiryDate: data.expiryDate,
       isImportant: data.isImportant || false,
       createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+      updatedAt: new Date()
+    } as Document
 
-    // Handle file upload
-    if (data.file) {
+    // Handle file upload only if attachments are enabled
+    if (ATTACHMENTS_ENABLED && 'file' in data && data.file instanceof File) {
       const blobRef = generateId()
-      await db.storeBlob(blobRef, data.file, data.file.type)
+      await blobStorage.store(blobRef, data.file)
       
-      document.fileName = data.file.name
-      document.fileSize = data.file.size
-      document.mimeType = data.file.type
-      document.blobRef = blobRef
-      document.fileUrl = `blob:${blobRef}`
+      const fileFields = {
+        fileName: data.file.name,
+        fileSize: data.file.size,
+        mimeType: data.file.type,
+        blobRef: blobRef,
+        fileUrl: `blob:${blobRef}`
+      }
+
+      Object.assign(document, fileFields)
     }
 
     await db.documents.add(document)
@@ -54,26 +64,30 @@ export class DocumentService {
       tags: data.tags,
       expiryDate: data.expiryDate,
       isImportant: data.isImportant,
-      updatedAt: new Date(),
-      syncVersion: Date.now(),
+      updatedAt: new Date()
     }
 
-    // Handle new file upload
-    if (data.file) {
+    // Handle new file upload only if attachments are enabled
+    if (ATTACHMENTS_ENABLED && 'file' in data && data.file instanceof File) {
       const currentDocument = await db.documents.get(id)
-      if (currentDocument?.blobRef) {
-        // Delete old file
-        await db.deleteBlob(currentDocument.blobRef)
+      
+      // If current document has a blob reference, delete it
+      if (currentDocument && 'blobRef' in currentDocument) {
+        await blobStorage.delete(currentDocument.blobRef)
       }
 
       const blobRef = generateId()
-      await db.storeBlob(blobRef, data.file, data.file.type)
+      await blobStorage.store(blobRef, data.file)
       
-      updates.fileName = data.file.name
-      updates.fileSize = data.file.size
-      updates.mimeType = data.file.type
-      updates.blobRef = blobRef
-      updates.fileUrl = `blob:${blobRef}`
+      const fileFields = {
+        fileName: data.file.name,
+        fileSize: data.file.size,
+        mimeType: data.file.type,
+        blobRef: blobRef,
+        fileUrl: `blob:${blobRef}`
+      }
+
+      Object.assign(updates, fileFields)
     }
 
     await db.documents.update(id, updates)
@@ -83,9 +97,9 @@ export class DocumentService {
    * Delete a document (soft delete)
    */
   async deleteDocument(id: string): Promise<void> {
-    const document = await db.documents.get(id)
-    if (document?.blobRef) {
-      await db.deleteBlob(document.blobRef)
+    const document = await db.documents.get(id) as Document
+    if (document && ATTACHMENTS_ENABLED && hasAttachment(document)) {
+      await blobStorage.delete(document.blobRef)
     }
     await db.softDeleteDocument(id)
   }
@@ -98,25 +112,117 @@ export class DocumentService {
   }
 
   /**
-   * Get all documents for a household
+   * Get all documents for a household with optional filtering, sorting, and pagination
    */
   async getDocuments(householdId: string, options?: DocumentListOptions): Promise<Document[]> {
     let query = db.documents.where({ householdId }).and(doc => !doc.deletedAt)
 
-    // Apply filters
+    // Apply filters if provided
     if (options?.filter) {
-      query = this.applyFilters(query, options.filter)
+      query = query.and(doc => {
+        const filter = options.filter!
+
+        // Basic filters
+        if (filter.categories?.length && !filter.categories.includes(doc.category)) {
+          return false
+        }
+
+        if (filter.tags?.length && !doc.tags.some(tag => filter.tags!.includes(tag))) {
+          return false
+        }
+
+        if (filter.hasExpiryDate !== undefined) {
+          const hasExpiry = doc.expiryDate !== undefined
+          if (filter.hasExpiryDate !== hasExpiry) return false
+        }
+
+        // Text search
+        if (filter.searchText) {
+          const searchText = filter.searchText.toLowerCase()
+          const matchesTitle = doc.title.toLowerCase().includes(searchText)
+          const matchesDescription = doc.description?.toLowerCase().includes(searchText) || false
+          const matchesTags = doc.tags.some(tag => tag.toLowerCase().includes(searchText))
+
+          // Also search file name if attachments are enabled
+          const matchesFileName = ATTACHMENTS_ENABLED && 
+            hasAttachment(doc) ? 
+            doc.fileName.toLowerCase().includes(searchText) : 
+            false
+
+          if (!matchesTitle && !matchesDescription && !matchesTags && !matchesFileName) {
+            return false
+          }
+        }
+
+        // Handle file-specific filters
+        if (ATTACHMENTS_ENABLED && hasFileFilter(filter)) {
+          // Skip file filters if document has no attachment data
+          if (!hasAttachment(doc)) {
+            return filter.mimeTypes === undefined &&
+                   filter.sizeMin === undefined &&
+                   filter.sizeMax === undefined
+          }
+
+          if (filter.mimeTypes?.length) {
+            const fileType = doc.mimeType.split('/')[0]
+            if (!filter.mimeTypes.includes(fileType)) return false
+          }
+
+          if (filter.sizeMin !== undefined && doc.fileSize < filter.sizeMin) {
+            return false
+          }
+
+          if (filter.sizeMax !== undefined && doc.fileSize > filter.sizeMax) {
+            return false
+          }
+        }
+
+        return true
+      })
     }
 
     let documents = await query.toArray()
 
     // Apply sorting
     if (options?.sortBy) {
-      documents = this.sortDocuments(documents, options.sortBy, options.sortOrder || 'desc')
+      documents.sort((a, b) => {
+        let comparison = 0
+        const sortOrder = options.sortOrder === 'asc' ? 1 : -1
+
+        switch (options.sortBy) {
+          case 'title':
+            comparison = a.title.localeCompare(b.title)
+            break
+          case 'category':
+            comparison = a.category.localeCompare(b.category)
+            break
+          case 'createdAt':
+            comparison = a.createdAt.getTime() - b.createdAt.getTime()
+            break
+          case 'expiryDate':
+            const dateA = a.expiryDate?.getTime() || 0
+            const dateB = b.expiryDate?.getTime() || 0
+            comparison = dateA - dateB
+            break
+          // File-specific sort options
+          case 'fileName':
+          case 'size':
+            if (ATTACHMENTS_ENABLED && 'fileName' in a && 'fileName' in b) {
+              if (options.sortBy === 'fileName') {
+                comparison = (a as any).fileName.localeCompare((b as any).fileName)
+              } else {
+                comparison = (a as any).fileSize - (b as any).fileSize
+              }
+            }
+            break
+        }
+
+        return comparison * sortOrder
+      })
     }
 
-    // Apply pagination
-    if (options?.page && options?.pageSize) {
+    // Apply pagination if requested
+    if (options?.page !== undefined && options?.pageSize !== undefined) {
       const start = (options.page - 1) * options.pageSize
       const end = start + options.pageSize
       documents = documents.slice(start, end)
@@ -212,7 +318,11 @@ export class DocumentService {
   async getDocumentsByFileType(householdId: string, fileType: string): Promise<Document[]> {
     return await db.documents
       .where({ householdId })
-      .and(doc => !doc.deletedAt && doc.mimeType.includes(fileType))
+      .and(doc => {
+        const hasDeletedAt = doc.deletedAt !== undefined && doc.deletedAt !== null
+        if (hasDeletedAt || !hasAttachment(doc)) return false
+        return doc.mimeType.includes(fileType)
+      })
       .reverse()
       .sortBy('createdAt')
   }
@@ -225,45 +335,52 @@ export class DocumentService {
     important: number
     expiringSoon: number
     expired: number
-    totalSize: number
+    totalSize?: number
     byCategory: Record<string, number>
-    byFileType: Record<string, number>
+    byFileType?: Record<string, number>
   }> {
     const allDocuments = await this.getDocuments(householdId)
     const importantDocs = await this.getImportantDocuments(householdId)
     const expiringSoonDocs = await this.getDocumentsExpiringSoon(householdId)
     const expiredDocs = await this.getExpiredDocuments(householdId)
 
-    const totalSize = allDocuments.reduce((sum, doc) => sum + doc.fileSize, 0)
-    
     const byCategory: Record<string, number> = {}
-    const byFileType: Record<string, number> = {}
-
-    allDocuments.forEach(doc => {
-      // Count by category
-      byCategory[doc.category] = (byCategory[doc.category] || 0) + 1
-      
-      // Count by file type
-      const fileType = doc.mimeType.split('/')[0] || 'unknown'
-      byFileType[fileType] = (byFileType[fileType] || 0) + 1
-    })
-
-    return {
+    const stats = {
       total: allDocuments.length,
       important: importantDocs.length,
       expiringSoon: expiringSoonDocs.length,
       expired: expiredDocs.length,
-      totalSize,
       byCategory,
-      byFileType,
     }
-  }
 
-  /**
-   * Get document file blob
-   */
-  async getDocumentBlob(blobRef: string): Promise<Blob | undefined> {
-    return await db.getBlob(blobRef)
+    allDocuments.forEach(doc => {
+      // Count by category
+      byCategory[doc.category] = (byCategory[doc.category] || 0) + 1
+    })
+
+    // Only include file-related stats if attachments are enabled
+    if (ATTACHMENTS_ENABLED) {
+      const byFileType: Record<string, number> = {}
+      let totalSize = 0
+
+      allDocuments.forEach(doc => {
+        if (hasAttachment(doc)) {
+          // Count by file type
+          const fileType = doc.mimeType.split('/')[0] || 'unknown'
+          byFileType[fileType] = (byFileType[fileType] || 0) + 1
+          
+          // Add to total size
+          totalSize += doc.fileSize || 0
+        }
+      })
+
+      Object.assign(stats, {
+        totalSize,
+        byFileType
+      })
+    }
+
+    return stats
   }
 
   /**
@@ -271,11 +388,11 @@ export class DocumentService {
    */
   async downloadDocument(id: string): Promise<void> {
     const doc = await this.getDocumentById(id)
-    if (!doc || !doc.blobRef) {
+    if (!doc || !('blobRef' in doc)) {
       throw new Error('Document not found or no file attached')
     }
 
-    const blob = await this.getDocumentBlob(doc.blobRef)
+    const blob = await blobStorage.get(doc.blobRef as string)
     if (!blob) {
       throw new Error('File not found')
     }
@@ -284,7 +401,7 @@ export class DocumentService {
     const url = URL.createObjectURL(blob)
     const link = window.document.createElement('a')
     link.href = url
-    link.download = doc.fileName
+    link.download = ('fileName' in doc ? doc.fileName : 'document') as string
     link.style.display = 'none'
     window.document.body.appendChild(link)
     link.click()
@@ -296,27 +413,32 @@ export class DocumentService {
    * Duplicate a document
    */
   async duplicateDocument(id: string): Promise<Document> {
-    const originalDocument = await db.documents.get(id)
+    const originalDocument = await db.documents.get(id) as Document
     if (!originalDocument) {
       throw new Error('Document not found')
     }
 
-    const duplicatedDocument: Document = {
+    let duplicatedDocument = {
       ...originalDocument,
       id: generateId(),
       title: `${originalDocument.title} (Cópia)`,
       createdAt: new Date(),
       updatedAt: new Date(),
-    }
+    } as Document
 
-    // Copy the file blob if it exists
-    if (originalDocument.blobRef) {
-      const originalBlob = await db.getBlob(originalDocument.blobRef)
+    // Copy the file blob if it exists and attachments are enabled
+    if (ATTACHMENTS_ENABLED && 'blobRef' in originalDocument) {
+      const originalBlob = await blobStorage.get(originalDocument.blobRef as string)
       if (originalBlob) {
         const newBlobRef = generateId()
-        await db.storeBlob(newBlobRef, originalBlob, originalBlob.type)
-        duplicatedDocument.blobRef = newBlobRef
-        duplicatedDocument.fileUrl = `blob:${newBlobRef}`
+        await blobStorage.store(newBlobRef, originalBlob)
+        Object.assign(duplicatedDocument, {
+          fileName: (originalDocument as any).fileName,
+          fileSize: (originalDocument as any).fileSize,
+          mimeType: (originalDocument as any).mimeType,
+          blobRef: newBlobRef,
+          fileUrl: `blob:${newBlobRef}`
+        })
       }
     }
 
@@ -343,81 +465,75 @@ export class DocumentService {
     ]
   }
 
-  private applyFilters(query: any, filter: DocumentFilter): any {
-    return query.and((doc: Document) => {
-      // Category filter
-      if (filter.categories && filter.categories.length > 0) {
-        if (!filter.categories.includes(doc.category)) return false
-      }
-
-      // File type filter
-      if (filter.fileTypes && filter.fileTypes.length > 0) {
-        const fileType = doc.mimeType.split('/')[0]
-        if (!filter.fileTypes.includes(fileType)) return false
-      }
-
-      // Important filter
-      if (filter.isImportant !== undefined) {
-        if (filter.isImportant !== doc.isImportant) return false
-      }
-
-      // Expiry date filter
-      if (filter.expiryDateStart || filter.expiryDateEnd) {
-        if (!doc.expiryDate) return false
-        
-        const expiryDate = typeof doc.expiryDate === 'string' ? parseISO(doc.expiryDate) : doc.expiryDate
-        if (filter.expiryDateStart && expiryDate < filter.expiryDateStart) return false
-        if (filter.expiryDateEnd && expiryDate > filter.expiryDateEnd) return false
-      }
-
-      // Tags filter
-      if (filter.tags && filter.tags.length > 0) {
-        const hasMatchingTag = filter.tags.some(tag => doc.tags.includes(tag))
-        if (!hasMatchingTag) return false
-      }
-
-      // Text search filter
-      if (filter.searchText) {
-        const searchText = filter.searchText.toLowerCase()
-        const matchesTitle = doc.title.toLowerCase().includes(searchText)
-        const matchesDescription = doc.description?.toLowerCase().includes(searchText) || false
-        const matchesFileName = doc.fileName.toLowerCase().includes(searchText)
-        const matchesTags = doc.tags.some(tag => tag.toLowerCase().includes(searchText))
-        if (!matchesTitle && !matchesDescription && !matchesFileName && !matchesTags) return false
-      }
-
-      return true
+  private sortDocumentsByExpiry(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
+    return documents.sort((a, b) => {
+      const expiryA = a.expiryDate ? (typeof a.expiryDate === 'string' ? parseISO(a.expiryDate) : a.expiryDate) : new Date(0)
+      const expiryB = b.expiryDate ? (typeof b.expiryDate === 'string' ? parseISO(b.expiryDate) : b.expiryDate) : new Date(0)
+      const comparison = expiryA.getTime() - expiryB.getTime()
+      return sortOrder === 'asc' ? comparison : -comparison
     })
   }
 
-  private sortDocuments(documents: Document[], sortBy: string, sortOrder: 'asc' | 'desc'): Document[] {
+  private sortDocumentsByTitle(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
     return documents.sort((a, b) => {
-      let comparison = 0
-
-      switch (sortBy) {
-        case 'title':
-          comparison = a.title.localeCompare(b.title)
-          break
-        case 'category':
-          comparison = a.category.localeCompare(b.category)
-          break
-        case 'fileSize':
-          comparison = a.fileSize - b.fileSize
-          break
-        case 'expiryDate':
-          const expiryA = a.expiryDate ? (typeof a.expiryDate === 'string' ? parseISO(a.expiryDate) : a.expiryDate) : new Date(0)
-          const expiryB = b.expiryDate ? (typeof b.expiryDate === 'string' ? parseISO(b.expiryDate) : b.expiryDate) : new Date(0)
-          comparison = expiryA.getTime() - expiryB.getTime()
-          break
-        case 'fileName':
-          comparison = a.fileName.localeCompare(b.fileName)
-          break
-        default:
-          comparison = a.createdAt.getTime() - b.createdAt.getTime()
-      }
-
+      const comparison = a.title.localeCompare(b.title)
       return sortOrder === 'asc' ? comparison : -comparison
     })
+  }
+
+  private sortDocumentsByCategory(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
+    return documents.sort((a, b) => {
+      const comparison = a.category.localeCompare(b.category)
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+  }
+
+  private sortDocumentsByDate(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
+    return documents.sort((a, b) => {
+      const comparison = a.createdAt.getTime() - b.createdAt.getTime()
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+  }
+
+  private sortDocumentsByFileSize(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
+    if (!ATTACHMENTS_ENABLED) return documents
+
+    return documents.sort((a, b) => {
+      const aSize = hasAttachment(a) ? a.fileSize : 0
+      const bSize = hasAttachment(b) ? b.fileSize : 0
+      const comparison = aSize - bSize
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+  }
+
+  private sortDocumentsByFileName(documents: Document[], sortOrder: 'asc' | 'desc'): Document[] {
+    if (!ATTACHMENTS_ENABLED) return documents
+
+    return documents.sort((a, b) => {
+      const aName = hasAttachment(a) ? a.fileName : ''
+      const bName = hasAttachment(b) ? b.fileName : ''
+      const comparison = aName.localeCompare(bName)
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+  }
+
+  sortDocuments(documents: Document[], options: DocumentListOptions): Document[] {
+    if (!options.sortBy || !options.sortOrder) return documents
+
+    switch (options.sortBy) {
+      case 'title':
+        return this.sortDocumentsByTitle(documents, options.sortOrder)
+      case 'category':
+        return this.sortDocumentsByCategory(documents, options.sortOrder)
+      case 'expiryDate':
+        return this.sortDocumentsByExpiry(documents, options.sortOrder)
+      case 'fileName':
+        return this.sortDocumentsByFileName(documents, options.sortOrder)
+      case 'size':
+        return this.sortDocumentsByFileSize(documents, options.sortOrder)
+      default:
+        return this.sortDocumentsByDate(documents, options.sortOrder)
+    }
   }
 }
 
