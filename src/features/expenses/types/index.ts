@@ -2,6 +2,17 @@ import { Expense } from './expense'
 
 export type { Expense }
 
+// Expense category (simple shape used in reports and categories table)
+export interface ExpenseCategory {
+  id: string
+  name: string
+  householdId: string
+  icon?: string
+  color?: string
+}
+
+// (ExpenseCategory is exported by its declaration above)
+
 // Status de pagamento
 export type PaymentStatus = 'paid' | 'pending' | 'overdue'
 
@@ -50,6 +61,7 @@ export interface ExpenseFormData {
   installment?: ExpenseInstallment
   isShared?: boolean // Se é compartilhada entre membros
   paidById?: string // ID do membro que pagou
+  accountId?: string // Conta / carteira origem do pagamento
 }
 
 // Filtros
@@ -63,6 +75,14 @@ export interface ExpenseFilter {
   searchText?: string
   hasRecurrence?: boolean
   hasInstallments?: boolean
+  // Filter by who paid the expense (member id)
+  paidById?: string
+  // Filter by participants (member ids involved in shares)
+  participantIds?: string[]
+  // Payment status filter
+  paymentStatus?: PaymentStatus | PaymentStatus[]
+  // Free-text tags assigned to expenses
+  tags?: string[]
 }
 
 // Opções de listagem

@@ -194,7 +194,27 @@ export function useBudgets(month: string) {
   
   return useQuery({
     queryKey: expenseKeys.budgets(currentHousehold?.id || '', month),
-    queryFn: () => budgetService.getBudgetsWithUsage(currentHousehold?.id || '', month),
+    queryFn: async () => {
+      // Try to fetch budgets; if none exist and household prefs request autoReset, copy from previous month
+      const res = await budgetService.getBudgetsWithUsage(currentHousehold?.id || '', month)
+      if ((res || []).length === 0) {
+        // Read household user preferences to decide whether to auto-copy (use local storage fallback)
+        try {
+          const prefsRaw = localStorage.getItem('user-preferences')
+          if (prefsRaw) {
+            const prefs = JSON.parse(prefsRaw)
+            if (prefs.autoResetBudgets) {
+              await budgetService.copyBudgetsFromPreviousMonth(currentHousehold?.id || '', month)
+              return await budgetService.getBudgetsWithUsage(currentHousehold?.id || '', month)
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      return res
+    },
     enabled: !!currentHousehold?.id,
     staleTime: 1000 * 60 * 2, // 2 minutes
   })

@@ -65,6 +65,13 @@ export interface MonthlyBalanceReport {
   // Se houve acerto neste mês
   isSettled: boolean
   settledAt?: Date
+  // Ajustes por centavos resultantes do arredondamento das divisões
+  roundingAdjustments?: Array<{
+    memberId: string
+    // ajuste em centavos (positivo = recebeu centavos extras, negativo = perdeu centavos)
+    cents: number
+    direction: 'up' | 'down' | 'none'
+  }>
 }
 
 // Funções auxiliares para cálculos
@@ -102,19 +109,66 @@ export class BalanceCalculator {
     
     // Para cada despesa
     for (const expense of expenses) {
-      // Adiciona ao total pago pelo membro
-      const paidBy = balances.get(expense.paidById)
-      if (paidBy) {
-        paidBy.paid += expense.amount
+      // Adiciona ao total pago pelo membro (paidById pode ser opcional em alguns registros)
+      const paidById = (expense as any).paidById ?? (expense as any).userId
+      if (paidById) {
+        const paidBy = balances.get(paidById)
+        if (paidBy) paidBy.paid += expense.amount
       }
 
-      // Calcula quanto cada um deve dessa despesa
+      // Calcula quanto cada um deve dessa despesa (valor bruto, sem arredondar)
       for (const [memberId, share] of memberShares) {
         const balance = balances.get(memberId)
         if (balance) {
           balance.share += (expense.amount * share) / 100
         }
       }
+    }
+
+    // Ajuste por centavos: transformar valores brutos em centavos inteiros distribuindo o restante
+    const totalCents = Math.round(totalExpenses * 100)
+    const membersData = Array.from(balances.values())
+
+    // Calcula centavos floor e resíduos
+    const floorCentsMap = new Map<string, number>()
+    const residueMap = new Map<string, number>()
+    let sumFloorCents = 0
+
+    for (const m of membersData) {
+      const rawCentsFloat = m.share * 100
+      const floorCents = Math.floor(rawCentsFloat)
+      const residue = rawCentsFloat - floorCents
+      floorCentsMap.set(m.memberId, floorCents)
+      residueMap.set(m.memberId, residue)
+      sumFloorCents += floorCents
+    }
+
+    // Quantos centavos ainda precisamos distribuir
+    let remaining = totalCents - sumFloorCents
+
+    // Ordena membros por residue desc para distribuir centavos extras a quem ficou com maior parte fracionária
+    const ordered = membersData.slice().sort((a, b) => (residueMap.get(b.memberId) ?? 0) - (residueMap.get(a.memberId) ?? 0))
+
+    const finalCentsMap = new Map<string, number>()
+    for (const m of ordered) {
+      const base = floorCentsMap.get(m.memberId) ?? 0
+      const add = remaining > 0 ? 1 : 0
+      finalCentsMap.set(m.memberId, base + add)
+      if (remaining > 0) remaining--
+    }
+
+    // Prepara informações de ajuste (quem recebeu/perdeu centavos)
+    const roundingAdjustments: Array<{ memberId: string; cents: number; direction: 'up' | 'down' | 'none' }> = []
+
+    for (const m of membersData) {
+      const rawCentsRoundedNearest = Math.round(m.share * 100)
+      const finalCents = finalCentsMap.get(m.memberId) ?? 0
+      const diff = finalCents - rawCentsRoundedNearest
+      const direction: 'up' | 'down' | 'none' = diff > 0 ? 'up' : diff < 0 ? 'down' : 'none'
+      roundingAdjustments.push({ memberId: m.memberId, cents: diff, direction })
+
+      // Atualiza o share para o valor final em reais
+      m.share = (finalCentsMap.get(m.memberId) ?? 0) / 100
     }
 
     // Calcula saldos finais
@@ -131,7 +185,8 @@ export class BalanceCalculator {
       totalExpenses,
       memberBalances: Array.from(balances.values()),
       suggestedTransfers: transfers,
-      isSettled: false
+      isSettled: false,
+      roundingAdjustments
     }
   }
 

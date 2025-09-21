@@ -1,28 +1,51 @@
-import { BaseEntity, Currency, PaymentMethod, Attachment, Recurrence, Installment } from '@/types/global'
+// Re-export the canonical Expense definition from the dedicated expense file (type-only)
+import type { Expense } from './types/expense'
+export type { Expense }
+// Import helper types defined in the typed folder so this barrel has full shapes
+export type PaymentMethod = 
+  | 'credit_card'
+  | 'debit_card'
+  | 'bank_transfer'
+  | 'money'
+  | 'pix'
+  | 'other'
 
-export interface Expense extends BaseEntity {
-  title: string
-  amount: number
-  currency: Currency
-  categoryId: string
-  paymentMethod: PaymentMethod
-  date: Date
-  notes?: string
-  attachments: Attachment[]
-  recurrence?: Recurrence
-  installment?: Installment
+export type PaymentStatus = 'paid' | 'pending' | 'overdue'
+
+export interface Recurrence {
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly'
+  interval: number
+  endDate?: Date
+}
+
+export interface Installment {
+  total: number
+  current?: number
+  originalExpenseId?: string
 }
 
 export interface ExpenseFormData {
   title: string
   amount: number
   categoryId: string
-  paymentMethod: PaymentMethod
+  paymentMethod?: PaymentMethod | string
   date: Date
   notes?: string
   attachments?: File[]
   recurrence?: Recurrence
   installment?: Installment
+  // New fields to support flexible split
+  split?: {
+    mode: 'equal' | 'percentage' | 'exact'
+    participants?: Array<{
+      memberId: string
+      percentage?: number
+      amount?: number
+    }>
+    visibility?: 'personal' | 'shared'
+  // Free-text tags entered as an array of strings
+  tags?: string[]
+  }
 }
 
 export interface ExpenseFilter {
@@ -35,6 +58,10 @@ export interface ExpenseFilter {
   searchText?: string
   hasRecurrence?: boolean
   hasInstallments?: boolean
+  paidById?: string
+  participantIds?: string[]
+  paymentStatus?: PaymentStatus | PaymentStatus[]
+  tags?: string[]
 }
 
 export interface ExpenseGroup {
@@ -42,6 +69,15 @@ export interface ExpenseGroup {
   label: string
   expenses: Expense[]
   total: number
+}
+
+// Simple category shape used across reports and UI
+export interface ExpenseCategory {
+  id: string
+  name: string
+  householdId?: string
+  icon?: string
+  color?: string
 }
 
 export interface ExpenseSummaryCard {

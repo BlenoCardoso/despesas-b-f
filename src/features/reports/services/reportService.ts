@@ -1,5 +1,5 @@
 import { db } from '@/core/db/database'
-import { Expense, ExpenseCategory } from '@/features/expenses/types'
+import { Expense } from '@/features/expenses/types'
 import { Task } from '@/features/tasks/types'
 import { Medication, MedicationIntake } from '@/features/medications/types'
 import { CalendarEvent } from '@/features/calendar/types'
@@ -29,6 +29,30 @@ export interface ExpenseReport {
     month: string
     expenses: number
     income: number
+    balance: number
+  }>
+  // Recent condensed trends
+  recentTrend3?: Array<{
+    month: string
+    expenses: number
+    income: number
+    balance: number
+  }>
+  recentTrend6?: Array<{
+    month: string
+    expenses: number
+    income: number
+    balance: number
+  }>
+  // Top categories for recent windows
+  topCategories3?: Array<{ category: string; amount: number }>
+  topCategories6?: Array<{ category: string; amount: number }>
+  // Per-person summary: paid vs consumed (based on shares)
+  perPersonSummary?: Array<{
+    userId: string
+    userName: string
+    paid: number
+    consumed: number
     balance: number
   }>
   topExpenses: Expense[]
@@ -254,7 +278,7 @@ class ReportService {
       const category = categories.find(c => c.id === budget.categoryId)
 
       return {
-        categoryId: budget.categoryId,
+        categoryId: budget.categoryId || '',
         categoryName: category?.name || 'Categoria Desconhecida',
         budgetAmount: budget.amount,
         spentAmount,
@@ -262,6 +286,72 @@ class ReportService {
         status
       }
     })
+
+    // Recent condensed trends (3 and 6 months)
+    const recentTrend3 = monthlyTrend.slice(-3)
+    const recentTrend6 = monthlyTrend.slice(-6)
+
+    // Helper: aggregate categories for a given window
+    const aggregateCategoriesBetween = (start: Date, end: Date) => {
+      const slice = expenses.filter(e => {
+        const expenseDate = new Date(e.date)
+        return expenseDate >= start && expenseDate <= end && e.type === 'expense'
+      })
+
+      const map = new Map<string, number>()
+      for (const e of slice) {
+        const catId = (e.categoryId as string) || 'unknown'
+        const prev = map.get(catId) || 0
+        map.set(catId, prev + e.amount)
+      }
+
+      const list: Array<{ category: string; amount: number }> = []
+      for (const [catId, amt] of map.entries()) {
+        const cat = categories.find(c => c.id === catId)
+        list.push({ category: cat?.name || 'Outros', amount: amt })
+      }
+
+      return list.sort((a, b) => b.amount - a.amount)
+    }
+
+    const start3 = startOfMonth(subMonths(new Date(), 2))
+    const start6 = startOfMonth(subMonths(new Date(), 5))
+    const endNow = endOfMonth(new Date())
+
+    const topCategories3 = aggregateCategoriesBetween(start3, endNow).slice(0, 3)
+    const topCategories6 = aggregateCategoriesBetween(start6, endNow).slice(0, 3)
+
+    // Per-person summary: how much each user paid and consumed (using shares)
+    const perPersonSummary = users.map(u => {
+      // Paid: sum of expenses where paidById === user.id
+      const paid = expenses
+        .filter(e => e.type === 'expense' && (e.paidById || e.paidBy) === u.id)
+        .reduce((s, e) => s + e.amount, 0)
+
+      // Consumed: sum shares where present, otherwise full amount attributed to payer
+      let consumed = 0
+      for (const e of expenses.filter(x => x.type === 'expense')) {
+        if (Array.isArray(e.shares) && e.shares.length > 0) {
+          const share = (e.shares as any[]).find(s => s.memberId === u.id)
+          if (share) {
+            if (typeof share.amount === 'number') consumed += share.amount
+            else if (typeof share.percentage === 'number') consumed += (share.percentage / 100) * e.amount
+          }
+        } else {
+          // not shared: consumed by payer
+          const payer = (e.paidById || e.paidBy)
+          if (payer === u.id) consumed += e.amount
+        }
+      }
+
+      return {
+        userId: u.id,
+        userName: u.name,
+        paid,
+        consumed,
+        balance: paid - consumed
+      }
+    }).sort((a, b) => b.paid - a.paid)
 
     return {
       period: this.formatPeriod(filters),
@@ -271,7 +361,12 @@ class ReportService {
       expensesByCategory,
       expensesByUser,
       monthlyTrend,
+      recentTrend3,
+      recentTrend6,
       topExpenses,
+      topCategories3,
+      topCategories6,
+      perPersonSummary,
       budgetAnalysis
     }
   }

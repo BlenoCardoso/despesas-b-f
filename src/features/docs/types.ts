@@ -8,13 +8,12 @@ export interface Document extends BaseEntity {
   description?: string
   category: string
   isImportant?: boolean
-  ...(ATTACHMENTS_ENABLED ? {
-    fileName: string
-    mimeType: string
-    fileSize: number
-    fileUrl: string
-    blobRef: string
-  } : {})
+  // Attachment-related fields (optional; only populated when attachments are enabled)
+  fileName?: string
+  mimeType?: string
+  fileSize?: number
+  fileUrl?: string
+  blobRef?: string
 }
 
 export interface DocumentFormData {
@@ -24,9 +23,8 @@ export interface DocumentFormData {
   description?: string
   category: string
   isImportant?: boolean
-  ...(ATTACHMENTS_ENABLED ? {
-    file?: File
-  } : {})
+  // Optional attachment when attachments feature is enabled
+  file?: File
 }
 
 export interface DocumentFilter {
@@ -35,20 +33,18 @@ export interface DocumentFilter {
   categories?: string[]
   hasExpiryDate?: boolean
   expiringWithinDays?: number
-  ...(ATTACHMENTS_ENABLED ? {
-    mimeTypes?: string[]
-    sizeMin?: number
-    sizeMax?: number
-  } : {})
+  // Attachment-related filter options
+  mimeTypes?: string[]
+  sizeMin?: number
+  sizeMax?: number
 }
 
 export interface DocumentGroup {
   category: string
   documents: Document[]
-  ...(ATTACHMENTS_ENABLED ? {
-    totalSize: number
-  } : {})
   count: number
+  // Optional total size when attachments are enabled
+  totalSize?: number
 }
 
 export interface DocumentStats {
@@ -56,11 +52,10 @@ export interface DocumentStats {
   expiringDocuments: number
   byCategory: Record<string, number>
   byTag: Record<string, number>
-  ...(ATTACHMENTS_ENABLED ? {
-    totalSize: number
-    averageSize: number
-    byMimeType: Record<string, number>
-  } : {})
+  // Attachment-related stats (optional)
+  totalSize?: number
+  averageSize?: number
+  byMimeType?: Record<string, number>
 }
 
 export interface DocumentExpiryAlert {
@@ -91,14 +86,15 @@ export type DocumentSortBy =
   | 'createdAt'
   | 'expiryDate'
   | 'category'
-  | ...(ATTACHMENTS_ENABLED ? ['fileName', 'size'] : [])
+  | 'fileName'
+  | 'size'
 
 export type DocumentSortOrder = 'asc' | 'desc'
 
 export interface DocumentListOptions {
   sortBy: DocumentSortBy
   sortOrder: DocumentSortOrder
-  groupBy: 'category' | ...(ATTACHMENTS_ENABLED ? ['mimeType'] : []) | 'tag' | 'none'
+  groupBy: 'category' | 'mimeType' | 'tag' | 'none'
   filter: DocumentFilter
   page: number
   pageSize: number
@@ -116,9 +112,8 @@ export interface DocumentImportData {
   expiryDate?: string
   description?: string
   category: string
-  ...(ATTACHMENTS_ENABLED ? {
-    fileName: string
-  } : {})
+  // Optional import metadata for attachments
+  fileName?: string
 }
 
 export interface DocumentCategory {

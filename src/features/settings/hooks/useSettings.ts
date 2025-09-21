@@ -36,6 +36,7 @@ const defaultPreferences: UserPreferences = {
   defaultExpenseCategory: 'Outros',
   defaultPaymentMethod: 'Dinheiro',
   budgetWarningPercentage: 80,
+  autoResetBudgets: false,
   autoBackup: true,
   backupFrequency: 'weekly',
   syncFrequency: 'realtime',

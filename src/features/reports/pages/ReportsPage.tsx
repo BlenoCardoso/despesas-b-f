@@ -327,12 +327,17 @@ export function ReportsPage() {
                 </ChartContainer>
 
                 <ChartContainer
-                  title="Status das Tarefas"
-                  isLoading={taskChartData.isLoading}
-                  error={taskChartData.error}
+                  title="Tendência (últimos 3 meses)"
+                  isLoading={expenseChartData.isLoading}
+                  error={expenseChartData.error}
                 >
-                  {taskChartData.data && (
-                    <TaskStatusChart data={taskChartData.data.statusChart.data} />
+                  {expenseReport.data && (
+                    <MonthlyTrendChart data={
+                      // Use last 3 months from report if available, otherwise fallback to full trend
+                      (expenseReport.data.recentTrend3 && expenseReport.data.recentTrend3.length > 0)
+                        ? expenseReport.data.recentTrend3.map(m => ({ month: m.month, expenses: m.expenses, income: m.income, balance: m.balance }))
+                        : expenseChartData.data?.trendChart.data.slice(-3) || []
+                    } />
                   )}
                 </ChartContainer>
               </div>
@@ -357,6 +362,39 @@ export function ReportsPage() {
               <ChartContainer title="Tendência Mensal">
                 <MonthlyTrendChart data={expenseChartData.data.trendChart.data} />
               </ChartContainer>
+
+              {/* Per-person summary */}
+              {expenseReport.data && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resumo por Pessoa (pago vs consumido)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left p-2">Pessoa</th>
+                            <th className="text-right p-2">Pago</th>
+                            <th className="text-right p-2">Consumido</th>
+                            <th className="text-right p-2">Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expenseReport.data.perPersonSummary?.map(person => (
+                            <tr key={person.userId} className="border-b">
+                              <td className="p-2">{person.userName}</td>
+                              <td className="p-2 text-right font-medium">{formatCurrency(person.paid)}</td>
+                              <td className="p-2 text-right">{formatCurrency(person.consumed)}</td>
+                              <td className={`p-2 text-right font-medium ${person.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(person.balance)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Top Expenses Table */}
               <Card>

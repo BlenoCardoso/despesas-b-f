@@ -25,7 +25,9 @@ export interface MedicationIntake {
   medicationId: string
   dateTimePlanned: Date
   dateTimeTaken?: Date
-  status: 'pending' | 'taken' | 'skipped'
+  // Backwards-compatible alias used in some report code
+  scheduledTime?: Date
+  status: 'pending' | 'taken' | 'skipped' | 'missed'
   dosageTaken: number
   note?: string
   medication: Medication
@@ -36,12 +38,14 @@ export interface Medication extends BaseEntity {
   dosage: number
   unit: string
   form: string
-  frequency: 'daily' | 'weekly' | 'monthly' | 'as_needed'
+  frequency: 'daily' | 'weekly' | 'monthly' | 'as_needed' | 'twice_daily' | 'three_times_daily'
   times: string[]
   startDate: Date
   endDate?: Date
+  // Backwards-compatible stock fields
   stockQuantity: number
   lowStockThreshold: number
+  currentStock?: number
   prescribedBy?: string
   description?: string
   isActive: boolean

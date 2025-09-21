@@ -36,8 +36,12 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { ExpenseFormData, Expense } from '../types'
+import { accountService } from '@/features/accounts/services/accountService'
 import { PaymentMethod } from '@/types/global'
 import { formatCurrency, parseCurrency } from '@/core/utils/formatters'
+import { Checkbox } from '@/components/ui/checkbox'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { useHouseholdMembers } from '@/features/households/hooks/useHouseholdMembers'
 
 const expenseSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').max(100, 'Título muito longo'),
@@ -46,6 +50,8 @@ const expenseSchema = z.object({
   paymentMethod: z.enum(['dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'transferencia', 'boleto']),
   date: z.date(),
   notes: z.string().optional(),
+  tags: z.string().optional(),
+  accountId: z.string().optional(),
   recurrence: z.object({
     type: z.enum(['diario', 'semanal', 'mensal', 'anual']),
     interval: z.number().min(1).max(365),
@@ -85,7 +91,7 @@ const recurrenceTypes = [
 
 export function ExpenseForm({
   expense,
-  categories,
+  categories = [],
   onSubmit,
   onCancel,
   isLoading = false,
@@ -94,6 +100,38 @@ export function ExpenseForm({
   const [showRecurrence, setShowRecurrence] = useState(!!expense?.recurrence)
   const [showInstallment, setShowInstallment] = useState(!!expense?.installment)
   const [amountInput, setAmountInput] = useState('')
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    let mounted = true
+    async function loadAccounts() {
+      try {
+        const list = await accountService.listAccounts(expense?.householdId || '')
+        if (!mounted) return
+        setAccounts(list.map(a => ({ id: a.id, name: a.name })))
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    loadAccounts()
+    return () => { mounted = false }
+  }, [expense?.householdId])
+  const { members } = useHouseholdMembers(expense?.householdId || '')
+  // expense.split may be undefined or have a different shape across the app; normalize locally
+  const split = (expense && (expense as any).split) || undefined
+  const [splitMode, setSplitMode] = useState<'equal' | 'percentage' | 'exact'>(split?.mode || 'equal')
+  const [splitVisibility, setSplitVisibility] = useState<'personal' | 'shared'>(split?.visibility || 'shared')
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>((split && split.participants ? split.participants.map((p: any) => p.memberId) : []) as string[])
+  const [participantValues, setParticipantValues] = useState<Record<string, { percentage?: number; amount?: number }>>(() => {
+    const initial: Record<string, { percentage?: number; amount?: number }> = {}
+    if (split && Array.isArray(split.participants)) {
+      split.participants.forEach((p: any) => {
+        initial[p.memberId] = { percentage: p.percentage, amount: p.amount }
+      })
+    }
+    return initial
+  })
 
   // Debug: verificar categorias no ExpenseForm
   React.useEffect(() => {
@@ -104,7 +142,8 @@ export function ExpenseForm({
     console.log('===========================');
   }, [categories])
 
-  const form = useForm<ExpenseFormValues>({
+  // Use a relaxed any type for the form to bridge UI/schema differences without broad refactors
+  const form = useForm<any>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       title: expense?.title || '',
@@ -115,6 +154,9 @@ export function ExpenseForm({
       notes: expense?.notes || '',
       recurrence: expense?.recurrence,
       installment: expense?.installment,
+      // tags are stored as array; show as comma-separated in UI
+      tags: expense?.tags ? expense.tags.join(', ') : '' as any,
+      accountId: (expense as any)?.accountId || ''
     },
   })
 
@@ -136,8 +178,18 @@ export function ExpenseForm({
     
     const formData: ExpenseFormData = {
       ...data,
+      tags: (data as any).tags ? (String((data as any).tags).split(',').map(s => s.trim()).filter(Boolean)) : undefined,
       recurrence: showRecurrence ? data.recurrence : undefined,
       installment: showInstallment ? data.installment : undefined,
+      split: {
+        mode: splitMode,
+        visibility: splitVisibility,
+        participants: selectedParticipants.map(id => ({
+          memberId: id,
+          percentage: splitMode === 'percentage' ? (participantValues[id]?.percentage ?? 0) : undefined,
+          amount: splitMode === 'exact' ? (participantValues[id]?.amount ?? 0) : undefined,
+        }))
+      }
     }
     
     console.log('📝 FormData final:', formData);
@@ -251,6 +303,34 @@ export function ExpenseForm({
                   </FormItem>
                 )}
               />
+
+              {/* Account / Wallet selection */}
+              <FormField
+                control={form.control}
+                name="accountId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Conta / Carteira</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a conta" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {accounts.length > 0 ? (
+                          accounts.map(a => (
+                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-account" disabled>Sem contas</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <FormField
@@ -313,6 +393,91 @@ export function ExpenseForm({
                 </FormItem>
               )}
             />
+
+            {/* Split options */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Divisão</h4>
+              <div className="flex items-center gap-4">
+                <RadioGroup value={splitMode} onValueChange={(v: any) => setSplitMode(v)}>
+                  <div className="flex gap-2">
+                    <label className="flex items-center gap-2">
+                      <RadioGroupItem value="equal" />
+                      <span>Igual</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <RadioGroupItem value="percentage" />
+                      <span>Por porcentagem</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <RadioGroupItem value="exact" />
+                      <span>Valores exatos</span>
+                    </label>
+                  </div>
+                </RadioGroup>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-sm">Visibilidade</span>
+                  <Select onValueChange={(v) => setSplitVisibility(v as any)} defaultValue={splitVisibility}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="personal">Só eu</SelectItem>
+                      <SelectItem value="shared">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Participants list */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(members || []).map(member => (
+                  <div key={member.id} className="flex items-center gap-2">
+                    <Checkbox
+                      checked={selectedParticipants.includes(member.id)}
+                      onCheckedChange={(v: any) => {
+                        const checked = !!v
+                        setSelectedParticipants(prev => checked ? [...prev, member.id] : prev.filter(id => id !== member.id))
+                      }}
+                    />
+                    <span className="text-sm">{member.user?.name || member.user?.displayName || member.user?.email || member.id}</span>
+
+                    {(splitMode === 'percentage' || splitMode === 'exact') && selectedParticipants.includes(member.id) && (
+                      <div className="ml-auto">
+                        {splitMode === 'percentage' ? (
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            placeholder="%"
+                            value={participantValues[member.id]?.percentage ?? ''}
+                            onChange={(e) => setParticipantValues(prev => ({
+                              ...prev,
+                              [member.id]: { ...(prev[member.id] || {}), percentage: Number(e.target.value) }
+                            }))}
+                            className="w-24 text-right"
+                          />
+                        ) : (
+                          <Input
+                            type="number"
+                            min={0}
+                            placeholder="R$"
+                            value={participantValues[member.id]?.amount ?? ''}
+                            onChange={(e) => setParticipantValues(prev => ({
+                              ...prev,
+                              [member.id]: { ...(prev[member.id] || {}), amount: Number(e.target.value) }
+                            }))}
+                            className="w-32 text-right"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Attachments section removed via feature flag */}
 

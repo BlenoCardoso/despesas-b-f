@@ -105,17 +105,18 @@ export class CategoryService {
    * Get default categories for a new household
    */
   getDefaultCategories(): Omit<Category, 'id' | 'householdId'>[] {
+    // Brazilian example categories tuned for households
     return [
-      { name: 'Alimentação', icon: 'utensils', color: '#ef4444' },
-      { name: 'Transporte', icon: 'car', color: '#3b82f6' },
-      { name: 'Moradia', icon: 'home', color: '#10b981' },
-      { name: 'Saúde', icon: 'heart', color: '#f59e0b' },
-      { name: 'Educação', icon: 'book', color: '#8b5cf6' },
+      { name: 'Mercado', icon: 'shopping-cart', color: '#ef4444' },
+      { name: 'Aluguel', icon: 'home', color: '#10b981' },
+      { name: 'Energia', icon: 'zap', color: '#f59e0b' },
+      { name: 'Água', icon: 'droplet', color: '#3b82f6' },
+      { name: 'Internet', icon: 'wifi', color: '#8b5cf6' },
+      { name: 'Transporte', icon: 'car', color: '#06b6d4' },
+      { name: 'Saúde', icon: 'heart', color: '#f97316' },
       { name: 'Lazer', icon: 'gamepad-2', color: '#ec4899' },
-      { name: 'Roupas', icon: 'shirt', color: '#06b6d4' },
-      { name: 'Serviços', icon: 'wrench', color: '#84cc16' },
-      { name: 'Investimentos', icon: 'trending-up', color: '#f97316' },
-      { name: 'Outros', icon: 'more-horizontal', color: '#6b7280' },
+      { name: 'Educação', icon: 'book', color: '#6366f1' },
+      { name: 'Imprevistos', icon: 'alert-circle', color: '#6b7280' },
     ]
   }
 

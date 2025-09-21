@@ -436,58 +436,6 @@ export function ExpensesPage() {
 
   // Handler removidos - funcionalidade de exportação removida temporariamente
 
-    const modal = document.createElement('div')
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
-    
-    // Criar ícones usando SVG para manter compatibilidade
-    const downloadIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>'
-    const fileTextIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>'
-    const fileSpreadsheetIcon = '<svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>'
-    
-    modal.innerHTML = `
-      <div class="bg-white p-6 rounded-lg shadow-lg">
-        <h3 class="font-semibold mb-4">Escolha o formato de exportação</h3>
-          <div class="flex flex-col sm:flex-row gap-2 mb-4">
-          <button id="csv-btn" class="button-secondary-touch bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-2">
-            ${fileTextIcon}<span aria-hidden="true">⬇️</span> CSV
-          </button>
-          <button id="excel-btn" class="button-secondary-touch bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-            ${fileSpreadsheetIcon}<span aria-hidden="true">⬇️</span> Excel
-          </button>
-          <button id="pdf-btn" class="button-secondary-touch bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-2">
-            ${downloadIcon}<span aria-hidden="true">⬇️</span> PDF
-          </button>
-        </div>
-        <button id="cancel-btn" class="button-secondary-touch bg-gray-400 text-white rounded hover:bg-gray-500">Cancelar</button>
-      </div>
-    `
-    
-    document.body.appendChild(modal)
-    
-    // Add event listeners
-    modal.querySelector('#csv-btn')?.addEventListener('click', () => {
-      handleExportFormat('csv')
-      document.body.removeChild(modal)
-    })
-    modal.querySelector('#excel-btn')?.addEventListener('click', () => {
-      handleExportFormat('excel')
-      document.body.removeChild(modal)
-    })
-    modal.querySelector('#pdf-btn')?.addEventListener('click', () => {
-      handleExportFormat('pdf')
-      document.body.removeChild(modal)
-    })
-    modal.querySelector('#cancel-btn')?.addEventListener('click', () => {
-      document.body.removeChild(modal)
-    })
-    
-    // Close on backdrop click
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        document.body.removeChild(modal)
-      }
-    })
-  }
 
   const handleShowExportDialog = () => {
     const modal = document.createElement('div')
@@ -973,5 +921,4 @@ export function ExpensesPage() {
       </main>
     </>
   )
-}
 

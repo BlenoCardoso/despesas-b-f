@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { InviteService } from '../services/inviteService'
+import { householdService } from '../services/householdService'
 import { auth } from '@/lib/firebase'
 import { Share2, Copy, RefreshCw } from 'lucide-react'
 
@@ -51,15 +51,16 @@ export function InviteButton({ householdId }: InviteButtonProps) {
       if (!user) throw new Error('Usuário não autenticado')
 
       // Criar convite
-      const invite = await InviteService.create({
+      const invite = await householdService.createInvite({
         householdId,
-        invitedBy: user.uid,
-        expiresIn: parseInt(expiresIn),
+        createdBy: user.uid,
+        expiresInHours: parseInt(expiresIn),
         maxUses: parseInt(maxUses)
       })
 
-      // Gerar link
-      const link = InviteService.generateInviteLink(invite.code)
+      // Gerar link (using current origin)
+      const baseUrl = window.location.origin
+      const link = `${baseUrl}/convite/${invite.code}`
 
       setInviteCode(invite.code)
       setInviteLink(link)

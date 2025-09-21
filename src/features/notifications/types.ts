@@ -1,6 +1,7 @@
 export type NotificationType = 
   | 'expense_budget_exceeded'
   | 'expense_budget_warning'
+  | 'expense_due'
   | 'task_due_soon'
   | 'task_overdue'
   | 'document_expiring'

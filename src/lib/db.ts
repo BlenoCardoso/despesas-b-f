@@ -1,30 +1,6 @@
-import Dexie, { Table } from 'dexie'
-import type { 
-  User, 
-  Household,
-  Member,
-  Expense,
-  Category
-} from '@/types'
+// Re-export the canonical AppDatabase instance from core/db/database.ts
+// This ensures every module imports the same DB surface (tables and helpers)
+// and avoids duplicated/incompatible lightweight shims.
+import { db as coreDb } from '@/core/db/database'
 
-export class AppDB extends Dexie {
-  users!: Table<User>
-  households!: Table<Household>
-  members!: Table<Member>
-  expenses!: Table<Expense>
-  categories!: Table<Category>
-
-  constructor() {
-    super('householdDB')
-
-    this.version(1).stores({
-      users: 'id, email',
-      households: 'id, ownerId',
-      members: '[householdId+userId], householdId, userId',
-      expenses: 'id, householdId, date, categoryId, paidById',
-      categories: 'id, householdId'
-    })
-  }
-}
-
-export const db = new AppDB()
+export const db = coreDb

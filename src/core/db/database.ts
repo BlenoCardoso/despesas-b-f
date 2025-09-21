@@ -21,6 +21,8 @@ export interface DatabaseSchema {
   householdInvites: Table<HouseholdInvite>
   users: Table<User>
   categories: Table<Category>
+  // Backwards-compatible alias used in some modules
+  expenseCategories: Table<Category>
   budgets: Table<Budget>
   
   // Features
@@ -37,6 +39,8 @@ export interface DatabaseSchema {
   
   // System
   settings: Table<AppSettings>
+  // Accounts / wallets
+  accounts: Table<{ id: string; householdId: string; name: string; balance?: number; currency?: string; description?: string; createdAt?: string; updatedAt?: string }>
   
   // Blobs for file storage
   blobs: Table<{ id: string; data: Blob; mimeType: string; size: number }>
@@ -53,6 +57,11 @@ export class AppDatabase extends Dexie {
   householdInvites!: Table<HouseholdInvite>
   users!: Table<User>
   categories!: Table<Category>
+  // Provide a backwards-compatible alias so callers that reference `db.expenseCategories`
+  // (older code / report consumers) keep working until all imports are canonicalized.
+  get expenseCategories(): Table<Category> {
+    return this.categories
+  }
   budgets!: Table<Budget>
   
   // Features
@@ -76,6 +85,9 @@ export class AppDatabase extends Dexie {
   
   // Blobs
   blobs!: Table<{ id: string; data: Blob; mimeType: string; size: number }>
+
+  // Accounts / wallets
+  accounts!: Table<{ id: string; householdId: string; name: string; balance?: number; currency?: string; description?: string; createdAt?: string; updatedAt?: string }>
 
   constructor() {
     super('DespesasCompartilhadasDB')
@@ -164,6 +176,13 @@ export class AppDatabase extends Dexie {
     }).upgrade(() => {
       console.log('Upgrading database to version 6 - Adding expense sharing...')
     })
+
+    // Version 7: Add accounts/wallets
+    this.version(7).stores({
+      accounts: '++id, householdId, name, balance, currency, createdAt, updatedAt'
+    }).upgrade(() => {
+      console.log('Upgrading database to version 7 - Adding accounts/wallets...')
+    })
   }
 
   // Helper methods for common operations
@@ -230,11 +249,21 @@ export class AppDatabase extends Dexie {
       .equals(options.householdId)
 
     if (options.startDate) {
-      query = query.and(expense => expense.date >= options.startDate!)
+      const startIso = options.startDate.toISOString()
+      query = query.and(expense => {
+        const raw = (expense as any).date
+        const expenseDate = typeof raw === 'string' ? raw : (raw instanceof Date ? raw.toISOString() : String(raw))
+        return expenseDate >= startIso
+      })
     }
 
     if (options.endDate) {
-      query = query.and(expense => expense.date <= options.endDate!)
+      const endIso = options.endDate.toISOString()
+      query = query.and(expense => {
+        const raw = (expense as any).date
+        const expenseDate = typeof raw === 'string' ? raw : (raw instanceof Date ? raw.toISOString() : String(raw))
+        return expenseDate <= endIso
+      })
     }
 
     if (options.categoryId) {
@@ -280,30 +309,30 @@ export class AppDatabase extends Dexie {
   // Soft delete methods
   async softDeleteExpense(id: string): Promise<void> {
     await this.expenses.update(id, { 
-      deletedAt: new Date(), 
-      updatedAt: new Date()
-    })
+      deletedAt: new Date().toISOString(), 
+      updatedAt: new Date().toISOString()
+    } as any)
   }
 
   async softDeleteTask(id: string): Promise<void> {
     await this.tasks.update(id, { 
-      deletedAt: new Date(), 
-      updatedAt: new Date()
-    })
+      deletedAt: new Date().toISOString(), 
+      updatedAt: new Date().toISOString()
+    } as any)
   }
 
   async softDeleteDocument(id: string): Promise<void> {
     await this.documents.update(id, { 
-      deletedAt: new Date(), 
-      updatedAt: new Date()
-    })
+      deletedAt: new Date().toISOString(), 
+      updatedAt: new Date().toISOString()
+    } as any)
   }
 
   async softDeleteMedication(id: string): Promise<void> {
     await this.medications.update(id, { 
-      deletedAt: new Date(), 
-      updatedAt: new Date()
-    })
+      deletedAt: new Date().toISOString(), 
+      updatedAt: new Date().toISOString()
+    } as any)
   }
 
   async getActiveCalendarEvents(householdId: string): Promise<CalendarEvent[]> {
@@ -316,9 +345,9 @@ export class AppDatabase extends Dexie {
 
   async softDeleteCalendarEvent(id: string): Promise<void> {
     await this.calendarEvents.update(id, { 
-      deletedAt: new Date(), 
-      updatedAt: new Date()
-    })
+      deletedAt: new Date().toISOString(), 
+      updatedAt: new Date().toISOString()
+    } as any)
   }
 
   // Notification methods

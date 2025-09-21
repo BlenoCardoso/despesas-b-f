@@ -158,49 +158,55 @@ export class HouseholdService {
 
   // Aceitar convite
   async acceptInvite(code: string, userId: string): Promise<Household> {
-    // Buscar e validar convite
-    const invite = await db.householdInvites
-      .where('code')
-      .equals(code)
-      .first()
+    // Use a transaction to validate and consume the invite atomically
+    return await db.transaction('rw', db.households, db.householdMembers, db.householdInvites, async () => {
+      // Buscar e validar convite
+      const invite = await db.householdInvites
+        .where('code')
+        .equals(code)
+        .first()
 
-    if (!invite) throw new Error('Convite não encontrado')
-    if (invite.isRevoked) throw new Error('Convite foi revogado')
-    if (invite.expiresAt < new Date()) throw new Error('Convite expirado')
-    if (invite.maxUses && invite.usedCount >= invite.maxUses) {
-      throw new Error('Convite atingiu número máximo de usos')
-    }
+      if (!invite) throw new Error('Convite não encontrado')
+      if (invite.isRevoked) throw new Error('Convite foi revogado')
+      // invite.expiresAt may be stored as Date or string depending on version; normalize
+      const expiresAt = invite.expiresAt instanceof Date ? invite.expiresAt : new Date(String(invite.expiresAt))
+      if (expiresAt < new Date()) throw new Error('Convite expirado')
+      if (invite.maxUses && (invite.usedCount || 0) >= invite.maxUses) {
+        throw new Error('Convite atingiu número máximo de usos')
+      }
 
-    // Verificar se usuário já é membro
-    const existingMember = await db.householdMembers
-      .where(['householdId', 'userId'])
-      .equals([invite.householdId, userId])
-      .first()
+      // Verificar se usuário já é membro
+      const existingMember = await db.householdMembers
+        .where(['householdId', 'userId'])
+        .equals([invite.householdId, userId])
+        .first()
 
-    if (existingMember) {
-      throw new Error('Você já é membro desta casa')
-    }
+      if (existingMember) {
+        throw new Error('Você já é membro desta casa')
+      }
 
-    // Buscar household
-    const household = await this.getHousehold(invite.householdId)
-    if (!household) throw new Error('Household não encontrada')
+      // Buscar household
+      const household = await this.getHousehold(invite.householdId)
+      if (!household) throw new Error('Household não encontrada')
 
-    // Adicionar membro
-    const member: HouseholdMember = {
-      id: generateId(),
-      userId,
-      householdId: household.id,
-      role: 'member',
-      joinedAt: new Date()
-    }
-    await db.householdMembers.add(member)
+      // Adicionar membro
+      const member: HouseholdMember = {
+        id: generateId(),
+        userId,
+        householdId: household.id,
+        role: 'member',
+        joinedAt: new Date()
+      }
+      await db.householdMembers.add(member)
 
-    // Atualizar contador do convite
-    await db.householdInvites.update(invite.id, {
-      usedCount: invite.usedCount + 1
+      // Atualizar contador do convite (atomically)
+      await db.householdInvites.update(invite.id, {
+        usedCount: (invite.usedCount || 0) + 1,
+        // keep existing isRevoked/expiresAt
+      } as any)
+
+      return household
     })
-
-    return household
   }
 
   // Atualizar household

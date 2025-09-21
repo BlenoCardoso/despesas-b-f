@@ -18,6 +18,7 @@ import { db } from './core/db/database'
 import { categoryService } from './features/expenses/services/categoryService'
 import { generateId } from './core/utils/id'
 import './App.css'
+import { runRecurringExpenseScanner } from './features/notifications/services/reminderScanner'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -45,9 +46,10 @@ function App() {
 
         // Create default household and user if they don't exist
         if (!household) {
-          const householdData = {
+          const householdData: any = {
             id: generateId(),
             name: 'Minha Casa',
+            ownerId: undefined,
             createdAt: new Date(),
             updatedAt: new Date(),
           }
@@ -56,11 +58,12 @@ function App() {
         }
 
         if (!user) {
-          const userData = {
+          const userData: any = {
             id: generateId(),
             name: 'Usuário',
             email: 'usuario@exemplo.com',
-            householdId: household.id,
+            householdId: household!.id,
+            isActive: true,
             createdAt: new Date(),
             updatedAt: new Date(),
           }
@@ -69,16 +72,32 @@ function App() {
         }
 
         // Set current household and user
-        setCurrentHousehold(household)
-        setCurrentUser(user)
+  setCurrentHousehold(household!)
+  setCurrentUser(user!)
 
         // Create default categories if none exist
-        const existingCategories = await categoryService.getCategories(household.id)
+        const existingCategories = await categoryService.getCategories(household!.id)
         if (existingCategories.length === 0) {
-          await categoryService.createDefaultCategories(household.id)
+          await categoryService.createDefaultCategories(household!.id)
         }
 
         console.log('App initialized successfully')
+
+        // Run notification scanners (recurring expense reminders)
+        try {
+          await runRecurringExpenseScanner()
+        } catch (e) {
+          console.warn('Failed to run recurring reminders scanner', e)
+        }
+
+        // Schedule daily run at approx. same time
+        const dailyMs = 24 * 60 * 60 * 1000
+        const intervalId = window.setInterval(() => {
+          runRecurringExpenseScanner().catch(err => console.warn('reminder scanner error', err))
+        }, dailyMs)
+
+        // Cleanup
+        return () => window.clearInterval(intervalId)
       } catch (error) {
         console.error('Error initializing app:', error)
       }

@@ -29,6 +29,8 @@ export interface UserPreferences {
   defaultExpenseCategory: string
   defaultPaymentMethod: string
   budgetWarningPercentage: number
+  // Automatically copy/reset budgets each month for the household
+  autoResetBudgets?: boolean
   autoBackup: boolean
   backupFrequency: 'daily' | 'weekly' | 'monthly'
   syncFrequency: 'realtime' | 'hourly' | 'daily'

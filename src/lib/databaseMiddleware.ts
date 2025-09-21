@@ -1,12 +1,12 @@
 import { auth } from '@/lib/firebase'
 import { db } from '@/lib/db'
 import type { BaseModel } from '@/types'
-import type { Cursor, PaginationOptions, PaginatedResult } from '@/types/pagination'
+import type { PaginationOptions, PaginatedResult } from '@/types/pagination'
 
 // Interface para operações do banco
 interface DatabaseOperation<T> {
   collection: string
-  data: Partial<T>
+  data: Partial<T> & Record<string, any>
   id?: string
 }
 
@@ -17,10 +17,10 @@ export class DatabaseMiddleware {
     if (!user) return false
 
     // Verificar se o usuário é membro do household
-    const memberDoc = await db.members
+    const memberDoc = await db.householdMembers
       .where('householdId')
       .equals(householdId)
-      .and(member => member.userId === user.uid)
+      .and((member: any) => member.userId === user.uid)
       .first()
 
     return !!memberDoc
@@ -77,7 +77,8 @@ export class DatabaseMiddleware {
 
     // Criar documento
     const id = await db.table(operation.collection).add(auditedOperation.data)
-    return id
+    // Dexie can return number|string; normalize to string for consumers
+    return String(id)
   }
 
   static async update<T extends BaseModel>(
@@ -161,19 +162,26 @@ export class DatabaseMiddleware {
     } = options
 
     // Build query
-    let collection = db.table(collectionName)
+  // Use `any` here to avoid mixing Table and Collection types in this thin middleware.
+  let collection: any = db.table(collectionName)
     
     // Start transaction
     const tx = db.transaction('r', collection, async () => {
       // Apply filters with compound where
       Object.entries(filters).forEach(([key, value]) => {
-        collection = collection.filter(item => item[key] === value)
+        // Support a sentinel for inequality created in query() wrapper: { __not: v }
+        if (value && typeof value === 'object' && '__not' in value) {
+          const v = (value as any).__not
+          collection = collection.filter((item: any) => item[key] !== v)
+        } else {
+          collection = collection.filter((item: any) => item[key] === value)
+        }
       })
 
       // Apply sorting - only first orderBy for now as compound sort isn't supported
       const [field, direction] = orderBy[0]
-      collection = direction === 'desc' 
-        ? collection.orderBy(field).reverse() 
+      collection = direction === 'desc'
+        ? collection.orderBy(field).reverse()
         : collection.orderBy(field)
 
       // Apply cursor based pagination
@@ -182,8 +190,8 @@ export class DatabaseMiddleware {
         if (cursorDoc) {
           const cursorValue = cursorDoc[field]
           collection = direction === 'desc'
-            ? collection.filter(item => item[field] < cursorValue)
-            : collection.filter(item => item[field] > cursorValue)
+            ? collection.filter((item: any) => item[field] < cursorValue)
+            : collection.filter((item: any) => item[field] > cursorValue)
         }
       }
 
@@ -205,5 +213,41 @@ export class DatabaseMiddleware {
     })
 
     return tx
+  }
+
+  // Backwards-compatible query method used by various services/components
+  // Accepts a more declarative `where` clause and optional ordering/limit
+  static async query<T extends BaseModel>(opts: {
+    collection: string
+    where?: Array<[string, '==' | '!=' | '<' | '<=' | '>' | '>=' | 'in' , any]> | Record<string, any>
+    orderBy?: [string, 'asc' | 'desc'] | [string, 'asc' | 'desc'][]
+    limit?: number
+  }): Promise<T[]>
+  {
+    const { collection: collName, where = {}, orderBy, limit = 100 } = opts
+
+    // If where is an array of tuples, convert to object filters for our simple filter implementation
+    let filters: Record<string, any> = {}
+    if (Array.isArray(where)) {
+      where.forEach(([k, op, v]) => {
+        // Only support equality/inequality for now in this thin wrapper
+        if (op === '==' ) filters[k] = v
+        else if (op === '!=' ) filters[k] = { __not: v }
+      })
+    } else {
+      filters = where as Record<string, any>
+    }
+
+    // Reuse queryPaginated for paging behavior but request a large limit
+    const result = await this.queryPaginated<T>(collName, filters, {
+      limit,
+      orderBy: orderBy ? (Array.isArray(orderBy[0]) ? orderBy as any : [orderBy as any]) : undefined
+    } as any)
+
+    return result.items
+  }
+
+  static async get<T extends BaseModel>(opts: { collection: string; id: string }): Promise<T | undefined> {
+    return await db.table(opts.collection).get(opts.id) as T | undefined
   }
 }
