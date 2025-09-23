@@ -1,22 +1,107 @@
-﻿import { useState } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Search, X } from 'lucide-react'
 import { ExpenseList } from '../components/ExpenseList'
 import { ExpenseForm } from '../components/ExpenseForm'
+import FiltersPanel from '../components/FiltersPanel'
 import { toast } from 'sonner'
+import { deleteExpense as serviceDeleteExpense, undoExpenseDelete } from '../services/expense-service'
 import { simpleExpenseService } from '../services/simpleExpenseService'
 import { authService } from '@/services/authService'
 import { ExpenseFormData } from '../types'
 import { useQueryClient } from '@tanstack/react-query'
+import { subMonths, addMonths, format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { useMonthlyExpenses } from '../hooks/useExpenses'
+import { formatCurrency } from '@/utils/formatters'
+import { accountService } from '@/features/accounts/services/accountService'
+import { useEffect as useReactEffect } from 'react'
 
 export function ExpensesPage() {
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
+  // Get monthly expenses to compute total for header
+  const monthlyRes = useMonthlyExpenses(selectedMonth)
+  const monthExpenses = monthlyRes?.data || []
+  const monthTotal = monthExpenses.reduce((s: number, e: any) => s + (e.amount || 0), 0)
+
   const [searchText, setSearchText] = useState('')
+  const [activeFilters, setActiveFilters] = useState<string[]>([])
+  const [savedFilters, setSavedFilters] = useState<Array<{ id: string; name: string; filters: any; search?: string }>>([])
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = authService.getCurrentUser()
   const householdIdForList = currentUser?.households?.[0] || 'default-household'
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([])
+  const [selectedAccount, setSelectedAccount] = useState<string | undefined>(undefined)
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
+
+  // Load saved filters from localStorage for this household
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`saved-expense-filters:${householdIdForList}`)
+      if (raw) setSavedFilters(JSON.parse(raw))
+    } catch (e) {
+      // ignore
+    }
+  }, [householdIdForList])
+
+  const persistSavedFilters = (next: typeof savedFilters) => {
+    setSavedFilters(next)
+    try { localStorage.setItem(`saved-expense-filters:${householdIdForList}`, JSON.stringify(next)) } catch (e) {}
+  }
+
+  const handleApplySavedFilter = (entry: any) => {
+    if (entry.filters) {
+      // Merge or replace active filters depending on UX; here we replace
+      // If filters contains activeFilters/list of chips, handle accordingly
+      setActiveFilters(entry.filters.activeFilters || [])
+      setSearchText(entry.search || '')
+      // Apply other filter fields to select controls if present
+      if (entry.filters.accountId) setSelectedAccount(entry.filters.accountId)
+      if (entry.filters.participantIds) setSelectedParticipants(entry.filters.participantIds)
+      // Invalidate Query to refresh
+      queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
+    }
+  }
+
+  const handleDeleteSavedFilter = (id: string) => {
+    const next = savedFilters.filter(s => s.id !== id)
+    persistSavedFilters(next)
+  }
+
+  const handleRenameSavedFilter = (id: string) => {
+    const current = savedFilters.find(s => s.id === id)
+    if (!current) return
+    const name = prompt('Renomear filtro', current.name)
+    if (!name) return
+    const next = savedFilters.map(s => s.id === id ? { ...s, name } : s)
+    persistSavedFilters(next)
+  }
+
+  // Load accounts and members for selectors
+  useReactEffect(() => {
+    ;(async () => {
+      try {
+        const accs = await accountService.listAccounts(householdIdForList)
+        setAccounts(accs.map(a => ({ id: a.id, name: a.name })))
+      } catch (e) {
+        // ignore
+      }
+
+      try {
+        // simple user list via authService (synchronous) or DB
+        const { db } = await import('@/core/db/database')
+        const users = (await db.users.toArray?.()) || []
+        setMembers(users.map((u: any) => ({ id: u.id, name: u.name })))
+      } catch (e) {
+        // ignore
+      }
+    })()
+  }, [householdIdForList])
 
   // Mock categories for now
   const categories = [
@@ -72,22 +157,28 @@ export function ExpensesPage() {
 
   const handleDeleteExpense = async (expense: any) => {
     try {
-      console.log('🗑️ Deleting expense:', expense)
-      
-      const { db } = await import('@/core/db/database')
-      
-      // Soft delete - mark as deleted instead of removing from database
-      await db.expenses.update(expense.id, {
-        deletedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
-      
-      console.log('✅ Expense deleted successfully:', expense.id)
-      toast.success('Despesa excluída com sucesso!')
-      
-      // Refresh the list
-      queryClient.invalidateQueries({
-        queryKey: ['expenses', 'infinite']
+  console.log('🗑️ Deleting expense:', expense)
+
+  // Soft delete - use centralized service which supports undo cache
+      await serviceDeleteExpense(expense.id, () => {
+        // show undo toast using local toast wrapper
+        toast('Despesa removida — desfazer', {
+          action: {
+            label: 'Desfazer',
+            onClick: async () => {
+              try {
+                await undoExpenseDelete(expense.id)
+                toast.success('Despesa restaurada')
+                queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
+              } catch (err) {
+                console.error('Erro ao restaurar despesa', err)
+                toast.error('Erro ao restaurar despesa')
+              }
+            }
+          }
+        })
+
+        queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
       })
     } catch (error) {
       console.error('❌ Error deleting expense:', error)
@@ -139,15 +230,18 @@ export function ExpensesPage() {
         
         console.log('✅ Expense created successfully:', expense.id)
         toast.success('Despesa criada com sucesso!')
+
+        // If we're offline, show a clearer offline-saving message
+        try {
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            toast('Salvo localmente — será sincronizado quando online')
+          }
+        } catch (e) {
+          // ignore
+        }
         
-        // Debug: Check if expense was actually saved
-        console.log('🔍 Checking if expense was saved...')
-        const { db } = await import('@/core/db/database')
-        const allExpenses = await db.expenses.toArray()
-        console.log('📊 All expenses after creation:', allExpenses.length, allExpenses)
-        
-        const newlyCreated = allExpenses.find(exp => exp.id === expense.id)
-        console.log('🎯 Newly created expense found:', newlyCreated)
+  // Debug: expense created
+  console.log('� Expense created id:', expense.id)
       }
       
       setShowExpenseForm(false)
@@ -173,7 +267,7 @@ export function ExpensesPage() {
           <p className="text-gray-600 mt-1">Gerencie suas despesas mensais</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowExpenseForm(true)} className="flex items-center gap-2">
+          <Button onClick={() => setShowExpenseForm(true)} className="flex items-center gap-2 bg-primary-solid text-on-primary">
             <Plus className="h-4 w-4" />
             Nova Despesa
           </Button>
@@ -181,47 +275,198 @@ export function ExpensesPage() {
       </div>
 
       {/* Search Bar */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          placeholder="Buscar despesas..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          className="pl-10"
-        />
+        <div className="relative max-w-md w-full">
+          <div className="flex items-center gap-2">
+            {/* Mobile: compact filter + search row */}
+            <div className="w-full flex items-center gap-2 md:hidden">
+                    <button className="px-3 py-2 border rounded chip-primary-filled text-on-primary touch-target" onClick={() => setShowFiltersPanel(s => !s)}>
+                <Search className="h-4 w-4 inline-block mr-2" />
+                Filtros
+              </button>
+              <Input
+                placeholder="Buscar despesas..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="flex-1"
+              />
+            </div>
+
+            {/* Desktop: search only */}
+            <div className="hidden md:block relative max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar despesas..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile filters panel (collapsible) */}
+        {showFiltersPanel && (
+          <div className="md:hidden">
+            <FiltersPanel
+              householdId={householdIdForList}
+              searchText={searchText}
+              accountId={selectedAccount}
+              participantIds={selectedParticipants}
+              onApply={(f) => {
+                setSearchText(f.searchText || '')
+                setSelectedAccount(f.accountId)
+                setSelectedParticipants(f.participantIds || [])
+                setShowFiltersPanel(false)
+              }}
+              onClear={() => {
+                setSearchText('')
+                setSelectedAccount(undefined)
+                setSelectedParticipants([])
+                setShowFiltersPanel(false)
+              }}
+            />
+          </div>
+        )}
+
+      {/* Filter chips */}
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        {savedFilters.map(sf => (
+          <div key={sf.id} className="relative">
+            <button
+              onClick={() => handleApplySavedFilter(sf)}
+              className="px-3 py-1 rounded-full text-sm border chip-primary"
+              title={`Aplicar filtro salvo ${sf.name}`}
+            >
+              {sf.name}
+            </button>
+            <div className="inline-flex ml-2 gap-1">
+              <button onClick={() => handleRenameSavedFilter(sf.id)} className="text-xs text-muted-foreground">Renomear</button>
+              <button onClick={() => handleDeleteSavedFilter(sf.id)} className="text-xs text-red-500">Excluir</button>
+            </div>
+          </div>
+        ))}
+
+        <button
+          onClick={() => {
+            const name = prompt('Nome do filtro (ex: Meu Mercado do mês)')
+            if (!name) return
+            const id = `${Date.now()}`
+            const entry = { id, name, filters: { activeFilters, accountId: selectedAccount, participantIds: selectedParticipants }, search: searchText }
+            const next = [entry, ...savedFilters]
+            persistSavedFilters(next)
+          }}
+          className="px-3 py-1 rounded-full text-sm border chip-primary"
+          title="Salvar filtros atuais"
+        >
+          Salvar filtros
+        </button>
+      </div>
+
+      {/* Account and participants selectors (simple) */}
+      <div className="flex gap-3 items-center mt-3 flex-wrap">
+        <div>
+          <label className="text-sm text-muted-foreground block">Conta</label>
+          <select className="h-8 border rounded px-2" value={selectedAccount || ''} onChange={(e) => setSelectedAccount(e.target.value || undefined)}>
+            <option value="">Todas</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-sm text-muted-foreground block">Participantes</label>
+          <select multiple className="h-8 border rounded px-2" value={selectedParticipants} onChange={(e) => setSelectedParticipants(Array.from(e.target.selectedOptions).map(o => o.value))}>
+            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+      </div>
+  <div className="flex gap-2 flex-wrap mt-3">
+        {[
+          { id: 'today', label: 'Hoje' },
+          { id: 'yesterday', label: 'Ontem' },
+          { id: 'this_week', label: 'Esta semana' },
+          { id: 'this_month', label: 'Este mês' },
+          { id: 'personal', label: 'Pessoal' },
+          { id: 'shared', label: 'Compartilhada' },
+          { id: 'paid', label: 'Pago' },
+          { id: 'pending', label: 'Pendente' },
+        ].map(chip => (
+          <button
+            key={chip.id}
+            onClick={() => {
+              setActiveFilters(prev => prev.includes(chip.id) ? prev.filter(p => p !== chip.id) : [...prev, chip.id])
+            }}
+            className={`px-3 py-1 rounded-full text-sm border ${activeFilters.includes(chip.id) ? 'chip-primary-filled text-on-primary' : 'bg-white text-gray-700'}`}
+          >
+            {chip.label}
+          </button>
+        ))}
       </div>
 
       {/* Expense List */}
-      <div className="bg-white rounded-lg border">
-        <ExpenseList
-          householdId={householdIdForList}
-          categories={categories}
-          onEdit={handleEditExpense}
-          onDuplicate={handleDuplicateExpense}
-          onDelete={handleDeleteExpense}
-          onViewAttachments={handleViewAttachments}
-        />
-      </div>
+          {/* Month header (sticky) + Expense List */}
+          <div className="bg-white rounded-lg border">
+            <div className="sticky top-6 bg-white z-20 border-b">
+              <div className="flex items-center justify-between p-4">
+                <div className="flex items-center gap-3">
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedMonth(m => subMonths(m, 1))}>&lt;</Button>
+                  <div className="text-lg font-semibold">{format(selectedMonth, 'MMM • yyyy', { locale: ptBR })}</div>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedMonth(m => addMonths(m, 1))}>&gt;</Button>
+                </div>
+                <div className="text-sm text-muted-foreground">Total do período: <strong>{formatCurrency(monthTotal)}</strong></div>
+              </div>
+            </div>
+
+            {/* Build combined filter to pass into the ExpenseList / useExpensesInfinite hook */}
+            {
+              /* eslint-disable @typescript-eslint/no-explicit-any */
+            }
+            <ExpenseList
+              householdId={householdIdForList}
+              categories={categories}
+              onEdit={handleEditExpense}
+              onDuplicate={handleDuplicateExpense}
+              onDelete={handleDeleteExpense}
+              onViewAttachments={handleViewAttachments}
+              onCreate={() => setShowExpenseForm(true)}
+                activeFilters={activeFilters}
+                searchText={searchText}
+                filter={{
+                  accountId: selectedAccount,
+                  participantIds: selectedParticipants && selectedParticipants.length > 0 ? selectedParticipants : undefined,
+                  searchText: searchText || undefined,
+                  paymentStatus: activeFilters.includes('paid') ? 'paid' : activeFilters.includes('pending') ? 'unpaid' : undefined,
+                } as any}
+            />
+          </div>
 
       {/* Floating Action Button - Mobile */}
       <Button
         onClick={() => setShowExpenseForm(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all z-50 md:hidden"
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all z-50 md:hidden bg-primary-solid text-on-primary flex items-center justify-center"
         size="default"
       >
         <Plus className="h-6 w-6" />
       </Button>
 
-      {/* Expense Form Modal */}
+      {/* Floating Action Button - Desktop/Tablet (visible on md and up) */}
+      <Button
+        onClick={() => setShowExpenseForm(true)}
+        aria-label="Adicionar nova despesa"
+        title="Adicionar nova despesa"
+        className="hidden md:flex fixed fab-safe-bottom right-5 h-14 w-14 rounded-full shadow-2xl hover:shadow-2xl transition-all duration-200 z-50 bg-primary text-white items-center justify-center"
+        size="default"
+      >
+        <Plus className="h-6 w-6" />
+      </Button>
+
+      {/* Expense Form Modal (responsive): bottom-sheet on mobile, centered on desktop */}
       {showExpenseForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-xl font-bold">
-                {editingExpense ? 'Editar Despesa' : 'Nova Despesa'}
-              </h2>
-              <Button 
-                variant="ghost" 
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center justify-center z-50 p-0">
+          <div className="bg-white shadow-xl w-full h-[82vh] md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-lg md:mx-6 overflow-y-auto">
+            <div className="flex items-center justify-between p-3 md:p-4 border-b">
+              <h2 className="text-xl font-bold">{editingExpense ? 'Editar Despesa' : 'Nova Despesa'}</h2>
+              <Button
+                variant="ghost"
                 size="sm"
                 onClick={() => {
                   setShowExpenseForm(false)
@@ -231,7 +476,8 @@ export function ExpensesPage() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-4">
+
+            <div className="p-3 md:p-4">
               <ExpenseForm
                 categories={categories}
                 expense={editingExpense || undefined}

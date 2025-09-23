@@ -1,4 +1,4 @@
-import * as React from "react"
+// React namespace not referenced directly in this file — keep module as plain ESM
 import { CalendarIcon } from "@radix-ui/react-icons"
 import { addMonths, format } from "date-fns"
 import { ptBR } from "date-fns/locale"

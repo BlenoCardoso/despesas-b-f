@@ -5,7 +5,7 @@ import {
   ExpenseReport, 
   TaskReport, 
   MedicationReport, 
-  OverallReport,
+  // OverallReport (unused here)
   ReportFilters 
 } from '../services/reportService'
 
@@ -112,7 +112,6 @@ export function useExportReport() {
 
 // Hook for dashboard summary data
 export function useDashboardSummary() {
-  const { currentHousehold } = useAppStore()
   
   const filters: ReportFilters = {
     period: 'month'
@@ -170,7 +169,28 @@ export function useRealtimeMetrics() {
 }
 
 // Hook for chart data formatting
-export function useChartData(reportType: 'expense' | 'task' | 'medication', filters: ReportFilters) {
+type ExpenseChartData = {
+  categoryChart: { data: { name: string; value: number; percentage: number }[]; total: number }
+  trendChart: { data: { month: string; expenses: number; income: number; balance: number }[] }
+  budgetChart: { data: { category: string; budget: number; spent: number; percentage: number; status: string }[] }
+}
+
+type TaskChartData = {
+  statusChart: { data: { name: string; value: number; color: string }[] }
+  priorityChart: { data: { priority: string; total: number; completed: number; percentage: number }[] }
+  productivityChart: { data: { period: string; created: number; completed: number; rate: number }[] }
+}
+
+type MedicationChartData = {
+  adherenceChart: { data: { date: string; scheduled: number; taken: number; missed: number; rate: number }[] }
+  typeChart: { data: { type: string; count: number; adherence: number }[] }
+  stockChart: { data: { medication: string; days: number; stock: number }[] }
+}
+
+export function useChartData(reportType: 'expense', filters: ReportFilters): { isLoading: boolean; error: any; data: ExpenseChartData | null }
+export function useChartData(reportType: 'task', filters: ReportFilters): { isLoading: boolean; error: any; data: TaskChartData | null }
+export function useChartData(reportType: 'medication', filters: ReportFilters): { isLoading: boolean; error: any; data: MedicationChartData | null }
+export function useChartData(reportType: 'expense' | 'task' | 'medication', filters: ReportFilters): { isLoading: boolean; error: any; data: ExpenseChartData | TaskChartData | MedicationChartData | null } {
   const expenseReport = useExpenseReport(filters)
   const taskReport = useTaskReport(filters)
   const medicationReport = useMedicationReport(filters)

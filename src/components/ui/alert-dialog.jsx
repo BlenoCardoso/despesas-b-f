@@ -1,6 +1,6 @@
 "use client"
 
-import * as React from "react"
+// React namespace not referenced directly in this file
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"

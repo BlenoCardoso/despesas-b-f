@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPreferences, NotificationSettings, BackupSettings, PrivacySettings, SecuritySettings } from '../types'
+import { UserPreferences } from '../types'
 
 // Keys para React Query
 export const settingsKeys = {
@@ -36,7 +36,7 @@ const defaultPreferences: UserPreferences = {
   defaultExpenseCategory: 'Outros',
   defaultPaymentMethod: 'Dinheiro',
   budgetWarningPercentage: 80,
-  autoResetBudgets: false,
+  autoResetBudgets: true,
   autoBackup: true,
   backupFrequency: 'weekly',
   syncFrequency: 'realtime',
@@ -74,7 +74,7 @@ const mockSettingsService = {
     }
   },
 
-  restoreBackup: async (file: File): Promise<{ success: boolean; message: string }> => {
+  restoreBackup: async (_file: File): Promise<{ success: boolean; message: string }> => {
     await new Promise(resolve => setTimeout(resolve, 2000))
     return {
       success: true,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Bell, BellRing } from 'lucide-react'
 import { useUnreadCount, useNotificationPolling } from '../hooks/useNotifications'
 import { NotificationCenter } from './NotificationCenter'

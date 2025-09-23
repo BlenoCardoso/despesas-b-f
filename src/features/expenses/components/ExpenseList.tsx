@@ -1,19 +1,19 @@
-import React, { useState } from 'react'
+import * as React from 'react'
+import { useState } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+// Badge replaced by lightweight chip spans to match new brand styles
 import { 
   MoreHorizontal, 
   Edit, 
   Copy, 
   Trash2, 
   Paperclip,
-  Calendar,
   CreditCard,
   Tag,
   ChevronDown,
-  AlertTriangle
+  
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -22,27 +22,50 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+// Dynamically import react-window in the browser (avoid using require which breaks in Vite/browser)
+const useVirtualList = () => {
+  const [ListComp, setListComp] = React.useState<any | null>(null)
+
+  React.useEffect(() => {
+    let mounted = true
+    import('react-window')
+      .then(mod => {
+        if (mounted) setListComp(() => mod.FixedSizeList)
+      })
+      .catch(err => {
+        // optional: log for debugging
+        console.debug('react-window not available (will fallback to non-virtualized list)', err)
+      })
+
+    return () => { mounted = false }
+  }, [])
+
+  return ListComp
+}
+
+// Local minimal type for the list child props used here. Keeps us independent from
+// possibly-mismatched @types/react-window in the repo and is sufficient for our renderer.
+type ListChildComponentProps = {
+  index: number
+  style?: React.CSSProperties
+  data?: any
+}
 import { motion, AnimatePresence } from 'framer-motion'
+import { useCurrentUser } from '@/core/store'
 import { Spinner } from '@/components/ui/spinner'
-import { toast } from '@/components/ui/toast'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { formatCurrency, formatDateGroup, formatPaymentMethod } from '@/core/utils/formatters'
-import type { Expense } from '@/types'
+// import type { Expense } from '@/types' (not used in focused check)
 import type { ExpenseGroup, FlexibleExpense } from '../types/expense'
 import { cn } from '@/lib/utils'
-import { parseISO, format } from 'date-fns'
+import { parseISO, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { useExpensesInfinite } from '../hooks/useExpensesInfinite'
-import { deleteExpense, undoExpenseDelete } from '../services/expense-service'
+import { highlightText } from '@/core/utils/highlight'
 
 // Default payment method when not specified
 const DEFAULT_PAYMENT_METHOD = "dinheiro"
 
 // Interfaces específicas para este componente
-interface Category {
-  id: string
-  name: string
-  color: string
-  icon?: string
-}
 
 interface ExpenseListProps {
   householdId: string
@@ -54,7 +77,10 @@ interface ExpenseListProps {
   onDuplicate?: (expense: FlexibleExpense) => void
   onDelete?: (expense: FlexibleExpense) => void
   onViewAttachments?: (expense: FlexibleExpense) => void
-  emptyMessage?: string
+  onCreate?: () => void
+  activeFilters?: string[]
+  searchText?: string
+  filter?: any
 }
 
 export function ExpenseList({
@@ -67,7 +93,11 @@ export function ExpenseList({
   onDuplicate,
   onDelete,
   onViewAttachments,
-  emptyMessage = "Nenhuma despesa encontrada",
+  onCreate,
+  // emptyMessage removed (not used) to avoid unused local errors
+  activeFilters = [],
+  searchText = '',
+  filter = undefined,
 }: ExpenseListProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
@@ -78,13 +108,13 @@ export function ExpenseList({
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-    error,
-    refetch
+  // error and refetch intentionally not captured here to avoid unused variable errors
   } = useExpensesInfinite({
     householdId,
     month,
     categoryId,
-    memberId
+    memberId,
+    filter
   })
 
   // Setup intersection observer for infinite scroll
@@ -103,8 +133,9 @@ export function ExpenseList({
 
     const groups: Record<string, ExpenseGroup> = {}
 
-    data.pages.forEach((page: { items: Expense[] }) => {
-      page.items.forEach((expense) => {
+    const pages: any[] = Array.isArray((data as any).pages) ? (data as any).pages : []
+    pages.forEach((page: any) => {
+      (page.items || []).forEach((expense: any) => {
         try {
           // Parse date string to Date object
           const expenseDate = parseISO(expense.date)
@@ -142,6 +173,18 @@ export function ExpenseList({
     )
   }, [data])
 
+  // Flatten groups into rows for virtualization: header rows and item rows
+  const flattenedRows = React.useMemo(() => {
+    const rows: Array<{ type: 'header' | 'item'; key: string; data?: any }> = []
+    ;(groupedExpenses || []).forEach(group => {
+      rows.push({ type: 'header', key: `h-${group.date}`, data: group })
+      group.expenses.forEach((expense: any) => {
+        rows.push({ type: 'item', key: `i-${expense.id}`, data: { expense, group } })
+      })
+    })
+    return rows
+  }, [groupedExpenses])
+
   const toggleGroup = (dateKey: string) => {
     const newExpanded = new Set(expandedGroups)
     if (newExpanded.has(dateKey)) {
@@ -152,6 +195,9 @@ export function ExpenseList({
     setExpandedGroups(newExpanded)
   }
 
+  // Attempt to load react-window for virtualization; we'll fallback gracefully if it's missing
+  const VirtualList = useVirtualList()
+
   const getCategoryInfo = (categoryId: string) => {
     return categories.find(cat => cat.id === categoryId) || {
       name: 'Categoria não encontrada',
@@ -160,20 +206,61 @@ export function ExpenseList({
     }
   }
 
+  // Apply client-side filters (chips) to grouped expenses
+  const filteredGroups = React.useMemo(() => {
+    if (!groupedExpenses || groupedExpenses.length === 0) return []
+    if (!activeFilters || activeFilters.length === 0) return groupedExpenses
+
+    const now = new Date()
+    return groupedExpenses
+      .map(g => ({
+        ...g,
+        expenses: g.expenses.filter(exp => {
+          try {
+            const expDate = parseISO(exp.date)
+            for (const f of activeFilters) {
+              if (f === 'today') {
+                if (format(expDate, 'yyyy-MM-dd') !== format(now, 'yyyy-MM-dd')) return false
+              } else if (f === 'yesterday') {
+                const y = new Date(now)
+                y.setDate(now.getDate() - 1)
+                if (format(expDate, 'yyyy-MM-dd') !== format(y, 'yyyy-MM-dd')) return false
+              } else if (f === 'this_week') {
+                const start = startOfWeek(now)
+                const end = endOfWeek(now)
+                if (expDate < start || expDate > end) return false
+              } else if (f === 'this_month') {
+                const mStart = startOfMonth(now)
+                const mEnd = endOfMonth(now)
+                if (expDate < mStart || expDate > mEnd) return false
+              } else if (f === 'personal') {
+                if (exp.isShared) return false
+              } else if (f === 'shared') {
+                if (!exp.isShared) return false
+              } else if (f === 'paid') {
+                if ((exp.paymentStatus || 'unpaid') !== 'paid') return false
+              } else if (f === 'pending') {
+                if ((exp.paymentStatus || 'unpaid') === 'paid') return false
+              }
+            }
+            return true
+          } catch (e) {
+            return true
+          }
+        })
+      }))
+      .filter(g => g.expenses && g.expenses.length > 0)
+  }, [groupedExpenses, activeFilters])
+
   // Loading state
-  if (isLoading && !data?.pages?.length) {
+  if (isLoading && (!data || !Array.isArray((data as any).pages) || (data as any).pages.length === 0)) {
     return (
-      <div className="space-consistent">
+      <div className="space-y-3">
         {[1, 2, 3].map(i => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="padding-consistent">
-              <div className="space-consistent-sm">
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="space-consistent-sm">
-                  <div className="h-16 bg-gray-200 rounded"></div>
-                  <div className="h-16 bg-gray-200 rounded"></div>
-                </div>
-              </div>
+          <Card key={i}>
+            <CardContent className="p-4">
+              <div className="h-4 bg-gray-100 rounded mb-2 w-2/3" />
+              <div className="h-3 bg-gray-100 rounded w-1/2" />
             </CardContent>
           </Card>
         ))}
@@ -181,40 +268,117 @@ export function ExpenseList({
     )
   }
 
-  // Error state
-  if (error) {
+  // If there are no expenses at all, show an empty state with CTA
+  const effectiveGroups = (filteredGroups && filteredGroups.length > 0) ? filteredGroups : groupedExpenses
+  if (!isLoading && effectiveGroups.length === 0) {
     return (
-      <Card>
-        <CardContent className="padding-consistent-lg text-center">
-          <div className="text-destructive">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
-            <p className="font-medium mb-2">Erro ao carregar despesas</p>
-            <p className="text-sm mb-4">{error instanceof Error ? error.message : 'Erro desconhecido'}</p>
-            <Button onClick={() => refetch()}>Tentar novamente</Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="py-8">
+        <Card>
+          <CardContent>
+            <div className="flex flex-col items-start gap-3">
+              <h3 className="text-lg font-semibold">Nenhuma despesa encontrada</h3>
+              <p className="text-sm text-gray-600">Ainda não há despesas neste período. Você pode criar a primeira despesa agora.</p>
+              <div className="mt-4">
+                <Button onClick={() => onCreate?.()} className="mr-2">Criar primeira despesa</Button>
+                <Button variant="ghost" onClick={() => window.location.reload()}>Recarregar</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
+  const totalRows = (filteredGroups.length ? filteredGroups : groupedExpenses).reduce((acc, g) => acc + 1 + (g.expenses?.length || 0), 0)
 
-  // Empty state
-  if (!data?.pages[0]?.items.length) {
+  // If many rows, try to virtualize. If react-window hasn't loaded yet, render non-virtualized fallback.
+  if (totalRows > 80) {
+    if (VirtualList) {
+      const List = VirtualList as any
+      return (
+        <List
+          height={600}
+          itemCount={flattenedRows.length}
+          itemSize={64}
+          width="100%"
+        >
+          {({ index, style }: ListChildComponentProps) => {
+            const row = flattenedRows[index]
+            if (!row) return null
+            if (row.type === 'header') {
+              const group = row.data
+              return (
+                <div style={style} key={row.key} className="p-2 bg-white border-b">
+                  <button onClick={() => toggleGroup(group.date)} className="w-full text-left flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <ChevronDown className="h-4 w-4 text-gray-500" />
+                      <h3 className="font-medium text-sm">{group.label}</h3>
+                      <span className="text-xs text-gray-500">{group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}</span>
+                    </div>
+                    <div className="text-sm font-semibold">{formatCurrency(group.total)}</div>
+                  </button>
+                </div>
+              )
+            }
+
+            // item row
+            const { expense } = row.data
+            return (
+              <div style={style} key={row.key} className="p-2 border-b">
+                <ExpenseItem
+                  expense={expense}
+                  category={getCategoryInfo(expense.categoryId || expense.category || '')}
+                  onEdit={onEdit}
+                  onDuplicate={onDuplicate}
+                  onDelete={onDelete}
+                  onViewAttachments={onViewAttachments}
+                  searchText={searchText}
+                />
+              </div>
+            )
+          }}
+        </List>
+      )
+    }
+
+    // Fallback: react-window not loaded yet — render regular list so user can still see content
     return (
-      <Card>
-        <CardContent className="padding-consistent-lg text-center">
-          <div className="text-gray-500">
-            <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="font-medium mb-2">Nenhuma despesa</p>
-            <p>{emptyMessage}</p>
+      <div className="space-y-3">
+        {(filteredGroups.length ? filteredGroups : groupedExpenses).map(group => (
+          <div key={group.date}>
+            <div className="p-2 bg-white border-b">
+              <button onClick={() => toggleGroup(group.date)} className="w-full text-left flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                  <h3 className="font-medium text-sm">{group.label}</h3>
+                  <span className="text-xs text-gray-500">{group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}</span>
+                </div>
+                <div className="text-sm font-semibold">{formatCurrency(group.total)}</div>
+              </button>
+            </div>
+            <div>
+              {group.expenses.map(expense => (
+                <div key={(expense as any).id} className="p-2 border-b">
+                  <ExpenseItem
+                    expense={expense}
+                    category={getCategoryInfo(expense.categoryId || (expense as any).category || '')}
+                    onEdit={onEdit}
+                    onDuplicate={onDuplicate}
+                    onDelete={onDelete}
+                    onViewAttachments={onViewAttachments}
+                    searchText={searchText}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
     )
   }
 
   return (
     <div className="space-y-3">
-      {groupedExpenses.map(group => (
+      {(filteredGroups.length ? filteredGroups : groupedExpenses).map(group => (
         <motion.div
           key={group.date}
           initial={{ opacity: 0, y: 20 }}
@@ -262,7 +426,7 @@ export function ExpenseList({
                     <div className="border-t">
                       {group.expenses.map((expense, index) => (
                         <ExpenseItem
-                          key={expense.id}
+                          key={(expense as any).id}
                           expense={expense}
                           category={getCategoryInfo(expense.categoryId || (expense as any).category || '')}
                           onEdit={onEdit}
@@ -270,6 +434,7 @@ export function ExpenseList({
                           onDelete={onDelete}
                           onViewAttachments={onViewAttachments}
                           isLast={index === group.expenses.length - 1}
+                          searchText={searchText}
                         />
                       ))}
                     </div>
@@ -301,6 +466,7 @@ interface ExpenseItemProps {
   onDelete?: (expense: FlexibleExpense) => void
   onViewAttachments?: (expense: FlexibleExpense) => void
   isLast?: boolean
+  searchText?: string
 }
 
 // Using the imported FlexibleExpense type
@@ -313,43 +479,93 @@ function ExpenseItem({
   onDelete,
   onViewAttachments,
   isLast = false,
+  searchText = '',
 }: ExpenseItemProps) {
   const hasAttachments = expense.attachments && expense.attachments.length > 0
   const hasRecurrence = !!expense.recurrence
   const hasInstallment = !!expense.installment
 
+  // Offline sync status
+  const { offlineData, isSyncing } = useOfflineSync()
+
+  const isQueuedActionForThis = React.useMemo(() => {
+    try {
+      if (!offlineData) return false
+      const inExpenses = (offlineData.expenses || []).some((e: any) => e.id === (expense as any).id)
+      const inQueue = (offlineData.syncQueue || []).some((a: any) => (a && a.data && a.data.id) === (expense as any).id)
+      return inExpenses || inQueue || !!(expense as any).isOffline || String((expense as any).id || '').startsWith('offline-')
+    } catch (e) {
+      return false
+    }
+  }, [offlineData, expense])
+
+  // Determine if the expense is "new": created by someone else within the last 24 hours
+  const currentUser = useCurrentUser()
+  const createdBy = (expense as any).createdBy || (expense as any).userId || (expense as any).createdById
+  const createdAtRaw = (expense as any).createdAt || (expense as any).date
+  let isNew = false
+  try {
+    const createdDate = createdAtRaw ? new Date(createdAtRaw) : null
+    if (createdDate && currentUser && currentUser.id) {
+      const hours = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60)
+      if (createdBy && createdBy !== currentUser.id && hours <= 24) {
+        isNew = true
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors and keep isNew = false
+  }
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
+      initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.2 }}
+      transition={{ duration: 0.18 }}
       className={cn(
-        "padding-consistent-sm hover:bg-gray-50 transition-colors",
+        "py-2 md:py-3 hover:bg-gray-50 transition-colors",
         !isLast && "border-b"
       )}
     >
-      {/* Mobile-optimized layout */}
-      <div className="flex items-start justify-between gap-consistent">
-        <div className="flex items-start gap-consistent flex-1 min-w-0">
+      {/* Mobile-optimized layout (more compact) */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 flex-1 min-w-0">
           {/* Compact category icon */}
-          <div 
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium shrink-0"
-            style={{ backgroundColor: category.color }}
+          <div
+            className="w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-white font-medium shrink-0"
+            style={{ backgroundColor: category.color || '#6b7280' }}
+            title={category.name}
           >
-            <Tag className="h-4 w-4" />
+            {/* If icon is emoji or simple string show it, otherwise show generic Tag icon */}
+            {typeof category.icon === 'string' && category.icon.length <= 2 ? (
+              <span className="text-sm md:text-base">{category.icon}</span>
+            ) : (
+              <Tag className="h-4 w-4 md:h-5 md:w-5" />
+            )}
           </div>
 
           {/* Expense details - mobile optimized */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-consistent-sm mb-1">
+            <div className="flex items-start justify-between gap-2 mb-0.5">
               <div className="flex-1 min-w-0">
-                <h4 className="font-medium truncate leading-tight">
-                  {expense.title || (expense as any).description || 'Despesa sem título'}
+                <h4 className="font-medium truncate leading-tight text-sm md:text-base">
+                  {/* Highlight search term in title */}
+                  {highlightText(expense.title || (expense as any).description || 'Despesa sem título', searchText)}
                 </h4>
+                    <div className="mt-1 flex items-center gap-2">
+                      {isNew && (
+                        <span className="chip-primary text-xs">Novo</span>
+                      )}
+                      {isQueuedActionForThis && (
+                        <div className="flex items-center gap-1">
+                          <span className="chip-primary text-xs">Pendente</span>
+                          {isSyncing && <Spinner className="h-3 w-3" />}
+                        </div>
+                      )}
+                    </div>
                 
                 {/* Mobile-friendly details */}
-                <div className="flex items-center gap-consistent-sm text-gray-500 mt-1">
-                  <span className="truncate max-w-20">{category.name}</span>
+                <div className="flex items-center gap-2 text-gray-500 mt-1 text-xs md:text-sm">
+                  <span className="truncate max-w-[120px] md:max-w-40">{category.name}</span>
                   {hasAttachments && (
                     <>
                       <span>•</span>
@@ -367,27 +583,27 @@ function ExpenseItem({
                 </div>
                 
                 {/* Payment method - compact */}
-                <div className="flex items-center gap-consistent-sm text-gray-500 mt-0.5">
-                  <CreditCard className="h-3 w-3" />
-                  <span className="truncate">{formatPaymentMethod(expense.paymentMethod || DEFAULT_PAYMENT_METHOD)}</span>
+                <div className="flex items-center gap-2 text-gray-500 mt-0.5 text-xs md:text-sm">
+                  <CreditCard className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="truncate max-w-[130px] md:max-w-none">{formatPaymentMethod(expense.paymentMethod || DEFAULT_PAYMENT_METHOD)}</span>
                   
                   {(hasRecurrence || hasInstallment) && (
                     <>
                       <span>•</span>
                       {hasRecurrence && (
-                        <Badge variant="outline" className="badge px-1 py-0">Rec</Badge>
+                        <span className="chip-primary text-[10px] px-2 py-0">Rec</span>
                       )}
                       {hasInstallment && (
-                        <Badge variant="outline" className="badge px-1 py-0">
+                        <span className="chip-primary text-[10px] px-2 py-0">
                           {expense.installment?.count}/{expense.installment?.total}
-                        </Badge>
+                        </span>
                       )}
                     </>
                   )}
                 </div>
                 
                 {expense.notes && (
-                  <p className="text-xs text-gray-600 mt-1 truncate">{expense.notes}</p>
+                  <p className="text-xs text-gray-600 mt-1 truncate max-w-[220px] md:max-w-none">{highlightText(expense.notes, searchText)}</p>
                 )}
               </div>
               

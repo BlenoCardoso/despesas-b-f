@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
-import { X, Pill, Package, AlertTriangle } from 'lucide-react'
+import { X, Pill } from 'lucide-react'
 import { useCreateMedication, useMedicationForms, useMedicationUnits } from '../hooks/useMedications'
-import { MedicationFormData } from '../types'
 import { IntervalSelector } from './IntervalSelector'
 
 interface MedicationFormProps {
@@ -43,8 +42,9 @@ export function MedicationForm({ isOpen, onClose }: MedicationFormProps) {
 
 
   const createMedication = useCreateMedication()
-  const { data: forms = [] } = useMedicationForms()
-  const { data: units = [] } = useMedicationUnits()
+  // NOTE: hooks are kept for future dynamic options; default lists used instead
+  const { data: _forms = [] } = useMedicationForms()
+  const { data: _units = [] } = useMedicationUnits()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

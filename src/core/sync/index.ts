@@ -1,6 +1,6 @@
 import { SyncAdapter } from './SyncAdapter'
-import { LocalAdapter } from './LocalAdapter'
-import { BroadcastChannelAdapter } from './BroadcastChannelAdapter'
+import { createLocalAdapter } from './LocalAdapter'
+import { createBroadcastChannelAdapter } from './BroadcastChannelAdapter'
 import { realtimeSync, RealtimeSync } from './RealtimeSync'
 import { versionManager, VersionManager } from './VersionManager'
 import { conflictResolver, ConflictResolver } from './ConflictResolver'
@@ -85,11 +85,11 @@ export class SyncManager {
   private initializeAdapters() {
     // Initialize adapters based on configuration
     if (this.config.adapters.includes('local')) {
-      this.adapters.set('local', new LocalAdapter())
+      this.adapters.set('local', createLocalAdapter())
     }
 
     if (this.config.adapters.includes('broadcast')) {
-      this.adapters.set('broadcast', new BroadcastChannelAdapter())
+      this.adapters.set('broadcast', createBroadcastChannelAdapter())
     }
 
     if (this.config.adapters.includes('realtime') && this.config.enableRealtime) {
@@ -175,8 +175,18 @@ export class SyncManager {
         throw new Error(`Primary adapter ${this.config.primaryAdapter} not available`)
       }
 
-      // Sync with primary adapter
-      await primaryAdapter.sync(item.entityType, item.entityId, item.data, item.operation)
+      // Build ChangeSet
+      const changeSet = {
+        entityType: item.entityType,
+        entityId: item.entityId,
+        operation: item.operation,
+        data: item.data,
+        timestamp: new Date(),
+        userId
+      }
+
+      // Sync with primary adapter (push semantics)
+      await primaryAdapter.push(changeSet as any)
 
       // Sync with secondary adapters
       const secondaryAdapters = Array.from(this.adapters.entries())
@@ -184,7 +194,7 @@ export class SyncManager {
 
       await Promise.allSettled(
         secondaryAdapters.map(([name, adapter]) => 
-          adapter.sync(item.entityType, item.entityId, item.data, item.operation)
+          adapter.push(changeSet as any)
         )
       )
 
@@ -392,11 +402,11 @@ export class SyncManager {
 // Create singleton instance
 export const syncManager = new SyncManager()
 
-// Export all sync-related classes and instances
+// Export factories, instances and types
+export type { SyncAdapter }
 export {
-  SyncAdapter,
-  LocalAdapter,
-  BroadcastChannelAdapter,
+  createLocalAdapter,
+  createBroadcastChannelAdapter,
   RealtimeSync,
   VersionManager,
   ConflictResolver,

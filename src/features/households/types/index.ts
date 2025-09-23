@@ -1,6 +1,6 @@
 import { User } from '@/core/types/user'
 
-export type MemberRole = 'owner' | 'admin' | 'member'
+export type MemberRole = 'owner' | 'admin' | 'member' | 'guest'
 
 export interface HouseholdMember {
   id: string
@@ -31,6 +31,10 @@ export interface HouseholdSettings {
     primaryColor?: string
     logo?: string
   }
+  // Controls who can edit or delete expenses created by other members.
+  // - 'owner-admin': only owner and admins can edit/delete others' expenses
+  // - 'all': any household member can edit/delete
+  canEditOthersExpenses?: 'owner-admin' | 'all'
 }
 
 export interface HouseholdInvite {

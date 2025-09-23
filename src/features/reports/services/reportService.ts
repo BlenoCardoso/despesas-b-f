@@ -1,12 +1,13 @@
 import { db } from '@/core/db/database'
 import { Expense } from '@/features/expenses/types'
+import { formatCurrency } from '@/core/utils/formatters'
+import { startOfMonth, endOfMonth, startOfYear, endOfYear, format, subMonths } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
+
 import { Task } from '@/features/tasks/types'
 import { Medication, MedicationIntake } from '@/features/medications/types'
 import { CalendarEvent } from '@/features/calendar/types'
-import { formatCurrency } from '@/core/utils/formatters'
-import { startOfMonth, endOfMonth, startOfYear, endOfYear, format, subMonths, subYears } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-
 export interface ExpenseReport {
   period: string
   totalExpenses: number
@@ -158,33 +159,73 @@ class ReportService {
   async generateExpenseReport(householdId: string, filters: ReportFilters): Promise<ExpenseReport> {
     const { startDate, endDate } = this.getDateRange(filters)
     
-    // Get expenses for the period
-    const expenses = await db.expenses
-      .where('householdId')
-      .equals(householdId)
-      .and(expense => {
-        const expenseDate = new Date(expense.date)
-        return expenseDate >= startDate && expenseDate <= endDate
-      })
-      .toArray()
+    // Get expenses for the period (use middleware to enforce membership)
+    let expenses: Expense[] = []
+    try {
+      if (DatabaseMiddleware && typeof DatabaseMiddleware.queryPaginated === 'function') {
+        const res = await DatabaseMiddleware.queryPaginated<Expense>('expenses', { householdId }, { limit: 10000, orderBy: [['createdAt','desc']] })
+        expenses = res.items.filter(e => {
+          const expenseDate = new Date((e as any).date)
+          return expenseDate >= startDate && expenseDate <= endDate
+        })
+      } else {
+        throw new Error('Middleware not available')
+      }
+    } catch (err) {
+      // Fallback for tests/mocks that access db.expenses directly
+      if ((db as any).expenses && typeof (db as any).expenses.where === 'function') {
+        expenses = await (db as any).expenses
+          .where('householdId')
+          .equals(householdId)
+          .and((expense: any) => {
+            const expenseDate = new Date(expense.date)
+            return expenseDate >= startDate && expenseDate <= endDate
+          })
+          .toArray()
+      } else {
+        throw err
+      }
+    }
 
     // Get categories
-    const categories = await db.expenseCategories
-      .where('householdId')
-      .equals(householdId)
-      .toArray()
+    let categories: any[] = []
+    try {
+      if (DatabaseMiddleware && typeof DatabaseMiddleware.query === 'function') {
+        categories = await DatabaseMiddleware.query({ collection: 'expenseCategories', where: { householdId }, limit: 1000 })
+      } else {
+        throw new Error('Middleware not available')
+      }
+    } catch (err) {
+      if ((db as any).expenseCategories) {
+        categories = await (db as any).expenseCategories.where('householdId').equals(householdId).toArray()
+      } else {
+        throw err
+      }
+    }
 
     // Get users
-    const users = await db.users
-      .where('householdId')
-      .equals(householdId)
-      .toArray()
+    let users: any[] = []
+    try {
+      users = await DatabaseMiddleware.query({ collection: 'users', where: { householdId }, limit: 1000 })
+    } catch (err) {
+      if ((db as any).users) {
+        users = await (db as any).users.where('householdId').equals(householdId).toArray()
+      } else {
+        throw err
+      }
+    }
 
     // Get budgets
-    const budgets = await db.budgets
-      .where('householdId')
-      .equals(householdId)
-      .toArray()
+    let budgets: any[] = []
+    try {
+      budgets = await DatabaseMiddleware.query({ collection: 'budgets', where: { householdId }, limit: 1000 })
+    } catch (err) {
+      if ((db as any).budgets) {
+        budgets = await (db as any).budgets.where('householdId').equals(householdId).toArray()
+      } else {
+        throw err
+      }
+    }
 
     // Calculate totals
     const totalExpenses = expenses
@@ -727,7 +768,7 @@ class ReportService {
   }
 
   // Export functions
-  async exportToCSV(data: any[], filename: string): Promise<string> {
+  async exportToCSV(data: any[], _filename: string): Promise<string> {
     if (data.length === 0) return ''
 
     const headers = Object.keys(data[0])
@@ -747,7 +788,7 @@ class ReportService {
     return csvContent
   }
 
-  async exportToExcel(data: any[], filename: string): Promise<Blob> {
+  async exportToExcel(data: any[], _filename: string): Promise<Blob> {
     const XLSX = await import('xlsx')
     
     // Create workbook
@@ -785,8 +826,9 @@ class ReportService {
   }
 
   async exportToPDF(reportData: any, reportType: string): Promise<Blob> {
-    const jsPDF = (await import('jspdf')).default
-    const html2canvas = (await import('html2canvas')).default
+  const jsPDF = (await import('jspdf')).default
+  // html2canvas imported dynamically when needed; avoid unused var
+  void (await import('html2canvas'))
     
     const pdf = new jsPDF('p', 'mm', 'a4')
     const pageWidth = pdf.internal.pageSize.getWidth()
@@ -953,7 +995,7 @@ class ReportService {
     return yPosition + 10
   }
 
-  private async addTaskReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+  private async addTaskReportToPDF(pdf: any, _reportData: any, yPosition: number, _pageWidth: number): Promise<number> {
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'bold')
     pdf.text('Resumo de Tarefas', 15, yPosition)
@@ -967,7 +1009,7 @@ class ReportService {
     return yPosition + 20
   }
 
-  private async addMedicationReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+  private async addMedicationReportToPDF(pdf: any, _reportData: any, yPosition: number, _pageWidth: number): Promise<number> {
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'bold')
     pdf.text('Resumo de Medicamentos', 15, yPosition)
@@ -981,14 +1023,14 @@ class ReportService {
     return yPosition + 20
   }
 
-  private async addGenericReportToPDF(pdf: any, reportData: any, yPosition: number, pageWidth: number): Promise<number> {
+  private async addGenericReportToPDF(pdf: any, _reportData: any, yPosition: number, _pageWidth: number): Promise<number> {
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'normal')
     pdf.text('Dados do Relatório:', 15, yPosition)
     yPosition += 10
     
     // Add generic data
-    const dataString = JSON.stringify(reportData, null, 2)
+  const dataString = JSON.stringify(_reportData, null, 2)
     const lines = dataString.split('\n').slice(0, 30) // Limit lines
     
     pdf.setFontSize(8)

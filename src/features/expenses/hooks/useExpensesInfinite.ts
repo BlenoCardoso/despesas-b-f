@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import type { FlexibleExpense } from '../types/expense'
+import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
 
 const PAGE_SIZE = 20
 
@@ -8,89 +9,62 @@ export interface UseExpensesInfiniteOptions {
   month?: string
   categoryId?: string
   memberId?: string
+  filter?: any
 }
 
 interface QueryPage {
   items: FlexibleExpense[]
-  cursor: { date: string } | null
+  cursor: { id: string; date?: string } | null
 }
 
 export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
-  const { householdId, month, categoryId, memberId } = options
+  const { householdId, month, categoryId, memberId, filter } = options
 
   return useInfiniteQuery<QueryPage>({
     queryKey: ['expenses', 'infinite', options],
     queryFn: async ({ pageParam }) => {
-      console.log('🔍 useExpensesInfinite - queryFn called with:', { householdId, options, pageParam })
-      
-      // Debug: Verificar todas as despesas no banco primeiro
-      console.log('🔍 Checking ALL expenses in database...')
-      const { db } = await import('@/core/db/database')
-      const allExpenses = await db.expenses.toArray()
-      console.log('📊 All expenses in DB:', allExpenses.length, allExpenses)
-      
-      // Debug: Verificar despesas por household
-      console.log('🔍 Filtering by householdId:', householdId)
-      const householdExpenses = await db.expenses.where('householdId').equals(householdId).toArray()
-      console.log('🏠 Expenses for this household:', householdExpenses.length, householdExpenses)
-      
-      // Debug: Verificar despesas não deletadas
-      const nonDeletedExpenses = householdExpenses.filter(
-        exp => exp.deletedAt == null
-      )
-      console.log('✅ Non-deleted expenses:', nonDeletedExpenses.length, nonDeletedExpenses)
-      console.log('🔍 Sample expense deletedAt values:', householdExpenses.map(exp => ({ id: exp.id, deletedAt: exp.deletedAt, type: typeof exp.deletedAt })))
+      // Build filters object for DatabaseMiddleware.queryPaginated
+      const filters: Record<string, any> = { householdId }
 
-      // Create base query
-      let query = db.expenses.where('householdId').equals(householdId)
-
-      // Add filters
       if (month) {
         const [year, monthNum] = month.split('-')
-        const startDate = `${year}-${monthNum}-01`
-        const endDate = `${year}-${monthNum}-31` // Simplified approach
-        query = query
-          .and(expense => expense.deletedAt == null && expense.date >= startDate)
-          .and(expense => expense.date <= endDate)
-      } else {
-        // Only show non-deleted expenses
-        query = query.and(expense => expense.deletedAt == null)
-      }
-      
-      if (categoryId) {
-        query = query.and(expense => expense.categoryId === categoryId)
-      }
-      if (memberId) {
-        query = query.and(expense => expense.paidById === memberId)
+        const startIso = new Date(`${year}-${monthNum}-01`).toISOString()
+        const endIso = new Date(`${year}-${monthNum}-31`).toISOString()
+        filters.date = { __range: [startIso, endIso] }
       }
 
-      // Get items (sorting is handled by index)
-      const items = await query.limit(PAGE_SIZE + 1).toArray()
-      console.log('📊 Database query result:', items)
+      if (categoryId) filters.categoryId = categoryId
+      if (memberId) filters.paidById = memberId
 
-      // Check if there are more items
-      const hasMore = items.length > PAGE_SIZE
-      const results = hasMore ? items.slice(0, -1) : items
-      console.log('📋 Results after pagination:', results)
+      // Merge advanced filters if provided (convert to simple equality/inequality where possible)
+      if (filter) {
+        if (filter.accountId) filters.accountId = filter.accountId
+        if (filter.paidById) filters.paidById = filter.paidById
+        if (filter.categoryIds) filters.categoryId = filter.categoryIds[0] // simple mapping for now
+        if (filter.startDate) filters.date = { __range: [new Date(filter.startDate).toISOString(), (filters.date && (filters.date as any).__range?.[1]) || undefined] }
+        if (filter.endDate) filters.date = { __range: [(filters.date && (filters.date as any).__range?.[0]) || undefined, new Date(filter.endDate).toISOString()] }
+        // text search and complex predicates remain client-side after fetch
+      }
 
-      // Convert to FlexibleExpense format
-      const flexResults: FlexibleExpense[] = results.map((expense: any) => ({
+      const pageOptions: any = { limit: PAGE_SIZE, cursor: pageParam || null, orderBy: [['date', 'desc']] }
+
+      const result = await DatabaseMiddleware.queryPaginated<any>('expenses', filters, pageOptions)
+
+      const items = result.items || []
+      const hasMore = !!result.cursor
+
+      const flexResults: FlexibleExpense[] = items.map((expense: any) => ({
         ...expense,
-        paymentMethod: 'dinheiro', // Default
-        isShared: false // Default
+        paymentMethod: expense.paymentMethod || 'dinheiro',
+        isShared: !!expense.isShared
       }))
-
-      // Get cursor for next page
-      const nextCursor = hasMore ? {
-        date: results[results.length - 1].date
-      } : null
 
       return {
         items: flexResults,
-        cursor: nextCursor
+        cursor: result.cursor
       }
     },
-    initialPageParam: null as null | { date: string },
+  initialPageParam: null as null | { id: string; date?: string },
     getNextPageParam: (lastPage) => lastPage.cursor,
     getPreviousPageParam: () => undefined // We only support forward pagination
   })

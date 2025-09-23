@@ -921,4 +921,6 @@ export function ExpensesPage() {
       </main>
     </>
   )
+}
+
 

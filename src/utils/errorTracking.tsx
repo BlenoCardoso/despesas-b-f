@@ -1,4 +1,4 @@
-import React from 'react'
+// React import removed intentionally (no JSX in this module)
 import { generateId } from '@/core/utils/id'
 
 export interface ErrorInfo {

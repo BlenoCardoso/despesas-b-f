@@ -1,6 +1,9 @@
 // Hook para funcionalidades offline avançadas
 import { useState, useEffect, useCallback } from 'react'
 import { useLocalStorage } from './useLocalStorage'
+import { peekQueue, removeFromQueue, getQueueLength } from '@/lib/syncQueue'
+import { syncManager } from '@/core/sync'
+import { auth } from '@/lib/firebase'
 
 interface OfflineData {
   expenses: any[]
@@ -127,7 +130,7 @@ export function useOfflineSync() {
 
   // Sync with server
   const syncWithServer = useCallback(async () => {
-    if (!offlineData.isOnline || isSyncing || offlineData.syncQueue.length === 0) {
+    if (!offlineData.isOnline || isSyncing) {
       return
     }
 
@@ -135,39 +138,48 @@ export function useOfflineSync() {
     setSyncError(null)
 
     try {
-      // Process sync queue
+      // Merge persistent queue (from services) with in-memory queue
+      const persistent = await peekQueue() || []
+      const merged = [...offlineData.syncQueue]
+      for (const p of persistent) {
+        if (!merged.some(m => m.id === p.id)) merged.push(p)
+      }
+
       const processedActions: string[] = []
-      
-      for (const action of offlineData.syncQueue) {
+      const processedPersistent: string[] = []
+
+      for (const action of merged) {
         try {
           await processSync(action)
           processedActions.push(action.id)
+          // if this action came from persistent queue, mark for removal
+          if (persistent.some(p => p.id === action.id)) processedPersistent.push(action.id)
         } catch (error) {
           console.error(`Erro ao sincronizar ação ${action.id}:`, error)
-          
-          // Increment retry count
+          // Increment retry count in local state if present
           setOfflineData(prev => ({
             ...prev,
             syncQueue: prev.syncQueue.map(queuedAction =>
               queuedAction.id === action.id
-                ? { ...queuedAction, retryCount: queuedAction.retryCount + 1 }
+                ? { ...queuedAction, retryCount: (queuedAction.retryCount || 0) + 1 }
                 : queuedAction
             )
           }))
-          
-          // Remove from queue if too many retries
-          if (action.retryCount >= 3) {
-            processedActions.push(action.id)
-          }
+          // No immediate removal; retry later. If retryCount >= 3 we will drop later.
         }
       }
 
-      // Remove processed actions from queue
+      // Remove processed actions from local in-memory queue
       setOfflineData(prev => ({
         ...prev,
         syncQueue: prev.syncQueue.filter(action => !processedActions.includes(action.id)),
         lastSync: new Date()
       }))
+
+      // Remove processed items from persistent queue
+      if (processedPersistent.length > 0) {
+        await removeFromQueue(processedPersistent)
+      }
 
     } catch (error) {
       setSyncError('Erro durante a sincronização')
@@ -179,22 +191,33 @@ export function useOfflineSync() {
 
   // Process individual sync action (mock implementation)
   const processSync = useCallback(async (action: SyncAction) => {
-    // Mock API calls - replace with actual server communication
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    switch (action.type) {
-      case 'create':
-        console.log('Syncing create:', action.data)
-        // Mock: await api.createExpense(action.data)
-        break
-      case 'update':
-        console.log('Syncing update:', action.data)
-        // Mock: await api.updateExpense(action.data.id, action.data.updates)
-        break
-      case 'delete':
-        console.log('Syncing delete:', action.data)
-        // Mock: await api.deleteExpense(action.data.id)
-        break
+    // Map our offline action shape to syncManager API
+    const user = auth.currentUser
+    const userId = user?.uid || 'unknown-user'
+
+    // Normalize payloads so syncManager can apply them
+    try {
+      switch (action.type) {
+        case 'create': {
+          const entity = action.data
+          // If entity has temporary offline id, pass it through; server should reconcile
+          await syncManager.sync('expenses', String(entity.id), entity, 'create', userId)
+          break
+        }
+        case 'update': {
+          const { id, updates } = action.data
+          await syncManager.sync('expenses', String(id), updates, 'update', userId)
+          break
+        }
+        case 'delete': {
+          const { id } = action.data
+          await syncManager.sync('expenses', String(id), {}, 'delete', userId)
+          break
+        }
+      }
+    } catch (err) {
+      // rethrow so caller can handle retry counting
+      throw err
     }
   }, [])
 
@@ -216,11 +239,12 @@ export function useOfflineSync() {
   }, [offlineData.lastSync])
 
   // Get sync status info
-  const getSyncStatus = useCallback(() => {
+  const getSyncStatus = useCallback(async () => {
+    const persistentCount = await getQueueLength()
     return {
       isOnline: offlineData.isOnline,
       isSyncing,
-      pendingActions: offlineData.syncQueue.length,
+      pendingActions: offlineData.syncQueue.length + persistentCount,
       lastSync: offlineData.lastSync,
       hasError: !!syncError,
       error: syncError,

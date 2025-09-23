@@ -19,8 +19,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ExpenseFilter } from '../types'
-import { PaymentMethod } from '@/types/global'
+import { ExpenseFilter, PaymentMethod } from '../types'
 import { formatCurrency } from '@/core/utils/formatters'
 
 interface ExpenseFiltersFormProps {
@@ -41,12 +40,12 @@ export function ExpenseFiltersForm({
   const [tempFilters, setTempFilters] = useState<ExpenseFilter>(filters)
 
   const paymentMethods: { value: PaymentMethod; label: string; icon: string }[] = [
-    { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-    { value: 'cartao_credito', label: 'Cartão de Crédito', icon: '💳' },
-    { value: 'cartao_debito', label: 'Cartão de Débito', icon: '💳' },
+    { value: 'money', label: 'Dinheiro', icon: '💵' },
+    { value: 'credit_card', label: 'Cartão de Crédito', icon: '💳' },
+    { value: 'debit_card', label: 'Cartão de Débito', icon: '💳' },
     { value: 'pix', label: 'PIX', icon: '📱' },
-    { value: 'transferencia', label: 'Transferência', icon: '🏦' },
-    { value: 'boleto', label: 'Boleto', icon: '📄' }
+    { value: 'bank_transfer', label: 'Transferência', icon: '🏦' },
+    { value: 'other', label: 'Outro', icon: '📄' }
   ]
 
   const handleCategoryToggle = (categoryId: string) => {
@@ -79,6 +78,15 @@ export function ExpenseFiltersForm({
       ...prev,
       [field]: numValue
     }))
+  }
+
+  const handleTextFieldChange = (field: 'paidById' | 'tags', value: string) => {
+    if (field === 'tags') {
+      const tags = value.split(',').map(t => t.trim()).filter(Boolean)
+      setTempFilters(prev => ({ ...prev, tags: tags.length ? tags : undefined }))
+    } else {
+      setTempFilters(prev => ({ ...prev, paidById: value ? value : undefined }))
+    }
   }
 
   const handleDateChange = (field: 'startDate' | 'endDate', date: Date | undefined) => {
@@ -214,6 +222,38 @@ export function ExpenseFiltersForm({
           </div>
 
           <Separator className="my-6" />
+
+          {/* Tags and payers */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-slate-50 dark:bg-slate-950">
+                <Tag className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              </div>
+              <Label className="font-medium text-base">Tags / Pagador</Label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Tags (vírgula separa)</Label>
+                <Input
+                  placeholder="viagem,mercado"
+                  value={(tempFilters.tags || []).join(',')}
+                  onChange={(e) => handleTextFieldChange('tags', e.target.value)}
+                  className="h-10"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Pagador (userId)</Label>
+                <Input
+                  placeholder="user-id"
+                  value={tempFilters.paidById || ''}
+                  onChange={(e) => handleTextFieldChange('paidById', e.target.value)}
+                  className="h-10"
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Valores */}
           <div className="space-y-4">

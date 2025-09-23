@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { 
   Bell, 
   BellOff, 
@@ -22,7 +22,7 @@ import {
   useNotificationPermission
 } from '../hooks/useNotifications'
 import type { Notification, NotificationPriority } from '../types'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 interface NotificationCenterProps {
@@ -90,24 +90,6 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
 
   const handleRequestPermission = async () => {
     await requestPermission()
-  }
-
-  const getPriorityIcon = (priority: NotificationPriority) => {
-    switch (priority) {
-      case 'urgent': return <Zap className="h-4 w-4 text-red-600" />
-      case 'high': return <AlertTriangle className="h-4 w-4 text-orange-600" />
-      case 'medium': return <Info className="h-4 w-4 text-blue-600" />
-      case 'low': return <Clock className="h-4 w-4 text-gray-600" />
-    }
-  }
-
-  const getPriorityColor = (priority: NotificationPriority) => {
-    switch (priority) {
-      case 'urgent': return 'border-l-red-500 bg-red-50'
-      case 'high': return 'border-l-orange-500 bg-orange-50'
-      case 'medium': return 'border-l-blue-500 bg-blue-50'
-      case 'low': return 'border-l-gray-500 bg-gray-50'
-    }
   }
 
   if (!isOpen) return null

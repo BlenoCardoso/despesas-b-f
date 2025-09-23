@@ -18,7 +18,7 @@ Object.defineProperty(window, 'Notification', {
   value: class MockNotification {
     static permission = 'default'
     static requestPermission = vi.fn(() => Promise.resolve('granted'))
-    constructor(title: string, options?: NotificationOptions) {
+    constructor(_title: string, _options?: NotificationOptions) {
       // Mock implementation
     }
   },
@@ -76,6 +76,24 @@ Object.defineProperty(window, 'ResizeObserver', {
   writable: true,
 })
 
+// jsdom doesn't implement pointer capture APIs used by some UI libs (Radix).
+// Provide lightweight no-op shims so tests don't throw when those methods are invoked.
+if (!(Element.prototype as any).hasPointerCapture) {
+  ;(Element.prototype as any).hasPointerCapture = function () {
+    return false
+  }
+}
+if (!(Element.prototype as any).setPointerCapture) {
+  ;(Element.prototype as any).setPointerCapture = function () {
+    /* no-op for tests */
+  }
+}
+if (!(Element.prototype as any).releasePointerCapture) {
+  ;(Element.prototype as any).releasePointerCapture = function () {
+    /* no-op for tests */
+  }
+}
+
 // Lightweight mock for the app store selectors used across tests
 // Export selectors with the same shape as src/core/store/index.ts
 const mockHousehold = {
@@ -119,6 +137,15 @@ vi.mock('@/core/store', async (importOriginal) => {
     usePWAStatus: () => ({ isInstallable: false, isInstalled: false }),
     useSyncStatus: () => ({ lastSyncAt: null, isSyncing: false, syncError: null }),
     useUIState: () => ({ isLoading: false, error: null }),
+    // Also provide the primary store selector for tests that mock useAppStore
+    useAppStore: () => ({
+      currentHousehold: mockHousehold,
+      currentUser: mockUser,
+      settings: mockSettings,
+      featureFlags: mockFeatureFlags,
+      isLoading: false,
+      error: null,
+    }),
   })
 })
 
@@ -137,7 +164,7 @@ const createChain = (getItems: () => any[], initialFilters: Array<(item: any) =>
     toArray: vi.fn(async () => applyFilters()),
     first: vi.fn(async () => applyFilters()[0]),
     count: vi.fn(async () => applyFilters().length),
-    delete: vi.fn(async (predicate?: any) => {
+  delete: vi.fn(async (_predicate?: any) => {
       // support delete() to remove all matched
       const items = applyFilters()
       const before = getItems().length
@@ -148,15 +175,15 @@ const createChain = (getItems: () => any[], initialFilters: Array<(item: any) =>
       return before - getItems().length
     }),
     // sortBy returns a Promise resolving to the sorted array (mimic Dexie's behavior when awaited)
-    sortBy: vi.fn(async (key: string) => {
-      return applyFilters().slice().sort((a, b) => (a && b && a[key] > b[key] ? 1 : -1))
+    sortBy: vi.fn(async (_key: string) => {
+      return applyFilters().slice().sort((a, b) => (a && b && a[_key] > b[_key] ? 1 : -1))
     }),
     // reverse returns a chain-like object that supports sortBy and toArray as async functions
     reverse: () => ({
-      sortBy: vi.fn(async (key: string) => {
-        return applyFilters().slice().sort((a, b) => (a && b && a[key] > b[key] ? 1 : -1)).reverse()
+      sortBy: vi.fn(async (_key: string) => {
+        return applyFilters().slice().sort((a, b) => (a && b && a[_key] > b[_key] ? 1 : -1)).reverse()
       }),
-      toArray: vi.fn(async () => applyFilters().slice().reverse()),
+  toArray: vi.fn(async () => applyFilters().slice().reverse()),
       and: (fn: (item: any) => boolean) => createChain(getItems, [...filters, fn]).reverse(),
     }),
   }
@@ -193,7 +220,7 @@ const expensesApi = {
         below: (val: any) => createChain(() => expensesData, [(item: any) => item && item[criteria as string] < val]),
         toArray: vi.fn(async () => expensesData.slice()),
         // also expose sortBy/reverse to be safe
-        sortBy: vi.fn(async (key: string) => expensesData.slice().sort((a, b) => (a && b && a[key] > b[key] ? 1 : -1))),
+      sortBy: vi.fn(async (_key: string) => expensesData.slice().sort((a, b) => (a && b && a[_key] > b[_key] ? 1 : -1))),
         reverse: () => ({
           sortBy: vi.fn(async (key: string) => expensesData.slice().sort((a, b) => (a && b && a[key] > b[key] ? 1 : -1)).reverse()),
           toArray: vi.fn(async () => expensesData.slice().reverse()),

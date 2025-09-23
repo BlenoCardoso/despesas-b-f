@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Clock, Pill, AlertCircle, CheckCircle2, PlayCircle } from 'lucide-react'
-import { Medication, MedicationIntake } from '../types'
+import { Medication } from '../types'
 import { medicationService } from '../services/medicationService'
 import { format, addHours, isToday, isTomorrow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -99,7 +99,7 @@ export function NextDoseCard({ medications, onRecordIntake }: NextDoseCardProps)
     )
     
     // Generate schedule and find next untaken dose
-    let currentDate = new Date(Math.max(now.getTime(), startDate.getTime()))
+    // no-op: previously calculated currentDate removed to avoid unused variable
     
     // Calculate interval
     let intervalHours = 24

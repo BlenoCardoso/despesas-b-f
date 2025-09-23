@@ -1,5 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom'
-import { Suspense } from 'react'
+// Suspense import removed (unused)
 import HomePage from '@/pages/HomePage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'

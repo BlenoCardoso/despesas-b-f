@@ -3,7 +3,6 @@ import { ptBR } from 'date-fns/locale'
 
 export const formatDateRange = (startDate: Date, endDate: Date): string => {
   const formattedStart = format(startDate, "d 'de' MMMM", { locale: ptBR })
-  const formattedEnd = format(endDate, "d 'de' MMMM", { locale: ptBR })
 
   const yearStart = format(startDate, 'yyyy')
   const yearEnd = format(endDate, 'yyyy')

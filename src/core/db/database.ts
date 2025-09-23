@@ -170,7 +170,7 @@ export class AppDatabase extends Dexie {
       // Nova tabela para configurações de divisão de despesas
       householdSplitSettings: '++id, householdId, unifyExpenses, updatedAt',
       // Nova tabela para registrar acertos de contas
-      settleUpRecords: '++id, householdId, fromMemberId, toMemberId, amount, month, year, settledAt, [householdId+month+year]',
+  settleUpRecords: '++id, householdId, fromMemberId, toMemberId, amount, month, year, settledAt, paymentMethod, paymentDate, status, [householdId+month+year]',
       // Atualiza expenses para suportar compartilhamento
       expenses: '++id, householdId, paidById, title, amount, categoryId, date, isShared, settledRecordId, settledAt, createdAt, updatedAt, deletedAt, syncVersion, [householdId+date], [categoryId+date], [deletedAt+updatedAt], [settledRecordId+settledAt]'
     }).upgrade(() => {
@@ -182,6 +182,13 @@ export class AppDatabase extends Dexie {
       accounts: '++id, householdId, name, balance, currency, createdAt, updatedAt'
     }).upgrade(() => {
       console.log('Upgrading database to version 7 - Adding accounts/wallets...')
+    })
+
+    // Version 8: Add syncQueue table for persistent sync actions
+    this.version(8).stores({
+      syncQueue: '++id, collection, entityId, type, householdId, performedBy, timestamp, retryCount'
+    }).upgrade(() => {
+      console.log('Upgrading database to version 8 - Adding syncQueue table...')
     })
   }
 

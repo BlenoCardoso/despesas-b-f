@@ -197,28 +197,36 @@ export class BudgetService {
     const budgetsWithUsage = await this.getBudgetsWithUsage(householdId, month)
     const alerts: Array<{
       budget: BudgetWithUsage
-      alertType: 'warning' | 'critical' | 'exceeded'
+      alertType: 'warning' | 'exceeded'
       message: string
     }> = []
+
+    // Read user preference for warning threshold (fallback to 80)
+    let warningThreshold = 80
+    try {
+      const prefsRaw = localStorage.getItem('user-preferences')
+      if (prefsRaw) {
+        const prefs = JSON.parse(prefsRaw)
+        if (typeof prefs.budgetWarningPercentage === 'number') {
+          warningThreshold = prefs.budgetWarningPercentage
+        }
+      }
+    } catch (e) {
+      // ignore and use default
+    }
 
     for (const budget of budgetsWithUsage) {
       if (budget.percentage >= 100) {
         alerts.push({
           budget,
           alertType: 'exceeded',
-          message: `Orçamento ${budget.categoryName || 'geral'} foi ultrapassado`,
+          message: `Orçamento ${budget.categoryName || 'geral'} foi ultrapassado (${Math.round(budget.percentage)}%)`,
         })
-      } else if (budget.percentage >= 90) {
-        alerts.push({
-          budget,
-          alertType: 'critical',
-          message: `Orçamento ${budget.categoryName || 'geral'} está em 90% do limite`,
-        })
-      } else if (budget.percentage >= 70) {
+      } else if (budget.percentage >= warningThreshold) {
         alerts.push({
           budget,
           alertType: 'warning',
-          message: `Orçamento ${budget.categoryName || 'geral'} está em 70% do limite`,
+          message: `Orçamento ${budget.categoryName || 'geral'} atingiu ${Math.round(budget.percentage)}% do limite`,
         })
       }
     }

@@ -1,11 +1,10 @@
-import React from 'react'
+// React import removed (no top-level JSX needing React binding)
 import {
   PieChart,
   Pie,
   Cell,
   BarChart,
   Bar,
-  LineChart,
   Line,
   AreaChart,
   Area,
@@ -74,7 +73,7 @@ export function ExpenseCategoryChart({ data, height = 300, className = '' }: Cha
             fill="#8884d8"
             dataKey="value"
           >
-            {data.map((entry, index) => (
+            {data.map((_, index) => (
               <Cell key={`cell-${index}`} fill={COLORS.mixed[index % COLORS.mixed.length]} />
             ))}
           </Pie>
@@ -136,7 +135,7 @@ export function BudgetAnalysisChart({ data, height = 300, className = '' }: Char
           />
           <Bar 
             dataKey="percentage" 
-            fill={(entry: any) => getBarColor(entry.percentage)}
+            fill="#10b981"
             name="% do Orçamento"
           >
             {data.map((entry, index) => (

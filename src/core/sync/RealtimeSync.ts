@@ -1,4 +1,52 @@
-import { EventEmitter } from 'events'
+// Lightweight EventEmitter implementation for the browser.
+// We avoid importing Node's 'events' to prevent Vite from externalizing it
+// and causing runtime errors in the browser environment.
+class BrowserEventEmitter {
+  private listeners: Map<string, Function[]> = new Map()
+
+  on(event: string, cb: Function) {
+    const list = this.listeners.get(event) || []
+    list.push(cb)
+    this.listeners.set(event, list)
+    return this
+  }
+
+  off(event: string, cb?: Function) {
+    if (!cb) {
+      this.listeners.delete(event)
+      return this
+    }
+    const list = this.listeners.get(event) || []
+    this.listeners.set(event, list.filter(f => f !== cb))
+    return this
+  }
+
+  once(event: string, cb: Function) {
+    const wrapper = (...args: any[]) => {
+      this.off(event, wrapper)
+      cb(...args)
+    }
+    // @ts-expect-error allow function typing
+    return this.on(event, wrapper)
+  }
+
+  emit(event: string, ...args: any[]) {
+    const list = this.listeners.get(event)
+    if (!list || list.length === 0) return false
+    // copy to avoid mutation during emit
+    const copy = list.slice()
+    for (const fn of copy) {
+      try {
+        fn(...args)
+      } catch (err) {
+        // Keep going on handler errors
+        // eslint-disable-next-line no-console
+        console.error('Event handler error', err)
+      }
+    }
+    return true
+  }
+}
 import { generateId } from '../utils/id'
 import { versionManager } from './VersionManager'
 import { conflictResolver } from './ConflictResolver'
@@ -36,7 +84,7 @@ export interface RealtimeSyncConfig {
   conflictResolution: 'auto' | 'manual'
 }
 
-export class RealtimeSync extends EventEmitter {
+export class RealtimeSync extends BrowserEventEmitter {
   private config: RealtimeSyncConfig
   private state: SyncState
   private websocket: WebSocket | null = null

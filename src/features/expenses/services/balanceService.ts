@@ -61,26 +61,35 @@ export class BalanceService {
     const startDate = new Date(year, month - 1, 1)
     const endDate = new Date(year, month, 0, 23, 59, 59)
 
-    // Buscar despesas do período
-    let expenses = await db.expenses
+    // Buscar despesas da household (normalizamos datas para comparação)
+    const rawExpenses = await db.expenses
       .where('householdId')
       .equals(householdId)
-      .and(expense => 
-        expense.date >= startDate &&
-        expense.date <= endDate &&
-        !expense.deletedAt
-      )
       .toArray()
+
+    // Normalizar e filtrar por período/deletedAt
+    let expenses = rawExpenses
+      .map(e => ({
+        // preserve original fields but normalize date to Date object
+        ...(e as any),
+        date: typeof (e as any).date === 'string' ? new Date((e as any).date) : (e as any).date,
+        // ensure isShared exists on the in-memory representation
+        isShared: (e as any).isShared === true
+      } as any))
+      .filter((expense: any) => {
+        if (expense.deletedAt) return false
+        return expense.date >= startDate && expense.date <= endDate
+      })
 
     // Se unifyExpenses = true, considera todas as despesas como compartilhadas
     if (settings.unifyExpenses) {
-      expenses = expenses.map(expense => ({
+      expenses = expenses.map((expense: any) => ({
         ...expense,
         isShared: true
       }))
     } else {
       // Senão, filtra apenas as despesas marcadas como compartilhadas
-      expenses = expenses.filter(expense => expense.isShared)
+      expenses = expenses.filter((expense: any) => expense.isShared)
     }
 
     // Verifica se já existe um acerto para este mês
@@ -115,25 +124,40 @@ export class BalanceService {
     month: number
     year: number
     notes?: string
+    paymentMethod?: string
+    paymentDate?: Date
+    status?: 'registered' | 'pending' | 'cancelled'
   }): Promise<SettleUpRecord> {
     // Criar registro de acerto
     const record: SettleUpRecord = {
       id: generateId(),
-      ...data,
-      settledAt: new Date()
+      householdId: data.householdId,
+      fromMemberId: data.fromMemberId,
+      toMemberId: data.toMemberId,
+      amount: data.amount,
+      expenseIds: data.expenseIds || [],
+      month: data.month,
+      year: data.year,
+      notes: data.notes,
+      settledAt: new Date(),
+      paymentMethod: data.paymentMethod,
+      paymentDate: data.paymentDate,
+      status: data.status || 'registered'
     }
 
-    await db.settleUpRecords.add(record)
+    await db.settleUpRecords.add(record as any)
 
     // Marcar todas as despesas incluídas como acertadas
-    await db.expenses
-      .where('id')
-      .anyOf(data.expenseIds)
-      .modify({
-        settledRecordId: record.id,
-        settledAt: record.settledAt,
-        updatedAt: new Date()
-      })
+    if (data.expenseIds && data.expenseIds.length > 0) {
+      await db.expenses
+        .where('id')
+        .anyOf(data.expenseIds)
+        .modify({
+          settledRecordId: record.id,
+          settledAt: record.settledAt,
+          updatedAt: new Date()
+        } as any)
+    }
 
     return record
   }

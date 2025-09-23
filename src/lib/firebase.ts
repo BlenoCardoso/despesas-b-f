@@ -6,8 +6,9 @@ import { getFirestore } from 'firebase/firestore'
 const _meta: any = import.meta
 const enabled = String(_meta.env?.VITE_FIREBASE_ENABLED || 'false') === 'true'
 
-let _auth: ReturnType<typeof getAuth> | null = null
-let _firestore: ReturnType<typeof getFirestore> | null = null
+// Real instances (populated only when enabled)
+let _auth: any = null
+let _firestore: any = null
 
 if (enabled) {
   const firebaseConfig = {
@@ -25,16 +26,45 @@ if (enabled) {
     _auth = getAuth(app)
     _firestore = getFirestore(app)
   } catch (e) {
-    // If initialization fails, log and leave stubs so app doesn't crash
+    // If initialization fails, log and continue with stubs so app doesn't crash
     // eslint-disable-next-line no-console
     console.warn('Firebase initialization failed:', e)
   }
-} else {
-  // If disabled, provide no-op placeholders to avoid runtime errors in imports
-  // We'll export minimal shapes expected by the app (auth.currentUser etc.)
-  // Keep them null/empty so authorization checks behave as "not authenticated" by default
 }
 
-// Export safe accessors
-export const auth = _auth as any
-export const firestore = _firestore as any
+// Safe stubs when Firebase is disabled or initialization failed
+// (no-op helper intentionally omitted)
+
+const authStub = {
+  currentUser: null,
+  // onAuthStateChanged should accept a callback and return an unsubscribe
+  onAuthStateChanged: (cb: (user: any) => void) => {
+    // call with null (not authenticated) on next tick
+    setTimeout(() => cb(null), 0)
+    return () => {}
+  },
+  signInWithPopup: async () => {
+    throw new Error('Firebase sign-in is disabled in this environment')
+  },
+  signOut: async () => {
+    return Promise.resolve()
+  },
+}
+
+// Minimal Firestore stub that won't throw when code imports firestore functions
+const firestoreStub = {
+  collection: () => ({
+    doc: () => ({
+      get: async () => ({ exists: false, data: () => null }),
+      set: async () => ({}),
+      update: async () => ({}),
+      delete: async () => ({}),
+    }),
+    add: async () => ({ id: 'stub' }),
+    where: () => ({ get: async () => ({ docs: [] }) }),
+  }),
+}
+
+// Export either real instances or safe stubs preserving the common API surface
+export const auth = _auth || authStub
+export const firestore = _firestore || firestoreStub

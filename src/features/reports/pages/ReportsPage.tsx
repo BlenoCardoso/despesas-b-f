@@ -1,18 +1,5 @@
-import React, { useState } from 'react'
-import { 
-  Calendar,
-  Download,
-  Filter,
-  TrendingUp,
-  DollarSign,
-  CheckSquare,
-  Pill,
-  AlertTriangle,
-  BarChart3,
-  PieChart,
-  LineChart,
-  Activity
-} from 'lucide-react'
+import { useState } from 'react'
+import { Download, Filter, DollarSign, CheckSquare, Pill, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -28,7 +15,7 @@ import {
   useChartData,
   useRealtimeMetrics
 } from '../hooks/useReports'
-import { ReportFilters, ReportPeriod } from '../services/reportService'
+import { ReportFilters, ReportPeriod, ExpenseReport } from '../services/reportService'
 import {
   ChartContainer,
   KPICard,
@@ -50,6 +37,11 @@ export function ReportsPage() {
     includeIncome: true
   })
 
+  // Controls for trend window and sorting
+  const [trendWindow, setTrendWindow] = useState<3 | 6>(3)
+  type PersonSummary = NonNullable<ExpenseReport['perPersonSummary']>[number]
+  const [personSort, setPersonSort] = useState<{ key: keyof PersonSummary; dir: 'asc' | 'desc' }>({ key: 'userName', dir: 'asc' })
+
   const [activeTab, setActiveTab] = useState('overview')
 
   // Data hooks
@@ -62,6 +54,9 @@ export function ReportsPage() {
 
   // Chart data
   const expenseChartData = useChartData('expense', filters)
+  // Month-only chart uses period 'month' explicitly to ensure current month data
+  const monthFilters = { ...filters, period: 'month' } as ReportFilters
+  const monthExpenseChartData = useChartData('expense', monthFilters)
   const taskChartData = useChartData('task', filters)
   const medicationChartData = useChartData('medication', filters)
 
@@ -116,7 +111,7 @@ export function ReportsPage() {
     }
   }
 
-  const isLoading = overallReport.isLoading || realtimeMetrics.isLoading
+  // overall loading indicator (not currently used as a variable)
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -268,8 +263,8 @@ export function ReportsPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-gray-600">
-                      Despesas Totais
-                    </CardTitle>
+                        Despesas Totais
+                      </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-red-600">
@@ -327,16 +322,24 @@ export function ReportsPage() {
                 </ChartContainer>
 
                 <ChartContainer
-                  title="Tendência (últimos 3 meses)"
+                  title={`Tendência (últimos ${trendWindow} meses)`}
                   isLoading={expenseChartData.isLoading}
                   error={expenseChartData.error}
+                  actions={(
+                    <div className="flex items-center space-x-2">
+                      <Button variant={trendWindow === 3 ? 'default' : 'outline'} size="sm" onClick={() => setTrendWindow(3)}>3m</Button>
+                      <Button variant={trendWindow === 6 ? 'default' : 'outline'} size="sm" onClick={() => setTrendWindow(6)}>6m</Button>
+                    </div>
+                  )}
                 >
                   {expenseReport.data && (
                     <MonthlyTrendChart data={
-                      // Use last 3 months from report if available, otherwise fallback to full trend
-                      (expenseReport.data.recentTrend3 && expenseReport.data.recentTrend3.length > 0)
-                        ? expenseReport.data.recentTrend3.map(m => ({ month: m.month, expenses: m.expenses, income: m.income, balance: m.balance }))
-                        : expenseChartData.data?.trendChart.data.slice(-3) || []
+                      // Choose the recentTrend3 or recentTrend6 from report if available, otherwise slice the trendChart
+                      (trendWindow === 3 && expenseReport.data.recentTrend3 && expenseReport.data.recentTrend3.length > 0)
+          ? expenseReport.data.recentTrend3.map(m => ({ month: m.month, expenses: m.expenses, income: m.income, balance: m.balance }))
+            : (trendWindow === 6 && expenseReport.data.recentTrend6 && expenseReport.data.recentTrend6.length > 0)
+            ? expenseReport.data.recentTrend6.map(m => ({ month: m.month, expenses: m.expenses, income: m.income, balance: m.balance }))
+            : (expenseChartData.data?.trendChart.data || []).slice(-trendWindow) || []
                     } />
                   )}
                 </ChartContainer>
@@ -351,44 +354,78 @@ export function ReportsPage() {
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ChartContainer title="Despesas por Categoria">
-                  <ExpenseCategoryChart data={expenseChartData.data.categoryChart.data} />
+                  {/* Use month-specific chart data to guarantee current month pie */}
+                  {monthExpenseChartData.data ? (
+                    <ExpenseCategoryChart data={monthExpenseChartData.data.categoryChart.data} />
+                  ) : (
+                    <ExpenseCategoryChart data={expenseChartData.data?.categoryChart.data || []} />
+                  )}
                 </ChartContainer>
 
                 <ChartContainer title="Análise de Orçamento">
-                  <BudgetAnalysisChart data={expenseChartData.data.budgetChart.data} />
+                  <BudgetAnalysisChart data={expenseChartData.data?.budgetChart.data || []} />
                 </ChartContainer>
               </div>
 
               <ChartContainer title="Tendência Mensal">
-                <MonthlyTrendChart data={expenseChartData.data.trendChart.data} />
+                <MonthlyTrendChart data={expenseChartData.data?.trendChart.data || []} />
               </ChartContainer>
 
               {/* Per-person summary */}
               {expenseReport.data && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Resumo por Pessoa (pago vs consumido)</CardTitle>
+                    <div className="flex items-center justify-between w-full">
+                      <CardTitle>Resumo por Pessoa (pago vs consumido)</CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-500">Ordenação interativa: clique nas colunas</span>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">Pessoa</th>
-                            <th className="text-right p-2">Pago</th>
-                            <th className="text-right p-2">Consumido</th>
-                            <th className="text-right p-2">Saldo</th>
-                          </tr>
+                              <tr className="border-b">
+                                <th className="text-left p-2 cursor-pointer" onClick={() => {
+                                  const key: any = 'userName'
+                                  setPersonSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+                                }}>Pessoa</th>
+                                <th className="text-right p-2 cursor-pointer" onClick={() => {
+                                  const key: any = 'paid'
+                                  setPersonSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' })
+                                }}>Pago</th>
+                                <th className="text-right p-2 cursor-pointer" onClick={() => {
+                                  const key: any = 'consumed'
+                                  setPersonSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' })
+                                }}>Consumido</th>
+                                <th className="text-right p-2 cursor-pointer" onClick={() => {
+                                  const key: any = 'balance'
+                                  setPersonSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' })
+                                }}>Saldo</th>
+                              </tr>
                         </thead>
                         <tbody>
-                          {expenseReport.data.perPersonSummary?.map(person => (
-                            <tr key={person.userId} className="border-b">
-                              <td className="p-2">{person.userName}</td>
-                              <td className="p-2 text-right font-medium">{formatCurrency(person.paid)}</td>
-                              <td className="p-2 text-right">{formatCurrency(person.consumed)}</td>
-                              <td className={`p-2 text-right font-medium ${person.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(person.balance)}</td>
-                            </tr>
-                          ))}
+                          {(() => {
+                            const list = [...(expenseReport.data?.perPersonSummary || [])] as PersonSummary[]
+                            list.sort((a, b) => {
+                              const key = personSort.key
+                              const dir = personSort.dir === 'asc' ? 1 : -1
+                              if (key === 'userName') {
+                                return dir * a.userName.localeCompare(b.userName)
+                              }
+                              // numeric fields (paid, consumed, balance)
+                              return dir * (Number(a[key] as any) - Number(b[key] as any))
+                            })
+                            return list.map(person => (
+                              <tr key={person.userId} className="border-b">
+                                <td className="p-2">{person.userName}</td>
+                                <td className="p-2 text-right font-medium">{formatCurrency(person.paid)}</td>
+                                <td className="p-2 text-right">{formatCurrency(person.consumed)}</td>
+                                <td className={`p-2 text-right font-medium ${person.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(person.balance)}</td>
+                              </tr>
+                            ))
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -413,9 +450,9 @@ export function ReportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {expenseReport.data.topExpenses.slice(0, 10).map((expense) => (
+                        {(expenseReport.data.topExpenses || []).slice(0, 10).map((expense: any) => (
                           <tr key={expense.id} className="border-b">
-                            <td className="p-2">{expense.description}</td>
+                            <td className="p-2">{expense.title || expense.description || '—'}</td>
                             <td className="p-2">
                               <Badge variant="outline">
                                 {/* Category name would be resolved here */}
@@ -445,11 +482,11 @@ export function ReportsPage() {
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ChartContainer title="Status das Tarefas">
-                  <TaskStatusChart data={taskChartData.data.statusChart.data} />
+                  <TaskStatusChart data={taskChartData.data?.statusChart.data || []} />
                 </ChartContainer>
 
                 <ChartContainer title="Produtividade">
-                  <ProductivityChart data={taskChartData.data.productivityChart.data} />
+                  <ProductivityChart data={taskChartData.data?.productivityChart.data || []} />
                 </ChartContainer>
               </div>
 
@@ -494,17 +531,17 @@ export function ReportsPage() {
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ChartContainer title="Aderência ao Tratamento">
-                  <AdherenceChart data={medicationChartData.data.adherenceChart.data} />
+                  <AdherenceChart data={medicationChartData.data?.adherenceChart.data || []} />
                 </ChartContainer>
 
                 <ChartContainer title="Medicamentos por Tipo">
-                  <MedicationTypesChart data={medicationChartData.data.typeChart.data} />
+                  <MedicationTypesChart data={medicationChartData.data?.typeChart.data || []} />
                 </ChartContainer>
               </div>
 
               {medicationReport.data.upcomingRefills.length > 0 && (
                 <ChartContainer title="Alertas de Estoque">
-                  <StockAlertChart data={medicationChartData.data.stockChart.data} />
+                  <StockAlertChart data={medicationChartData.data?.stockChart.data || []} />
                 </ChartContainer>
               )}
 

@@ -30,6 +30,12 @@ export interface SettleUpRecord {
   amount: number
   // Data do acerto
   settledAt: Date
+  // Método de pagamento usado para o acerto (ex: Pix, Transferência, Dinheiro)
+  paymentMethod?: string
+  // Data efetiva do pagamento (se diferente de settledAt) — permite agendar/registrar outra data
+  paymentDate?: Date
+  // Status do acerto (registered, pending, cancelled)
+  status?: 'registered' | 'pending' | 'cancelled'
   // Mês/ano de referência
   month: number // 1-12
   year: number

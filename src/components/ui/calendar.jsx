@@ -1,4 +1,4 @@
-import * as React from "react"
+// React namespace not referenced directly in this file
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker } from "react-day-picker"
 

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { medicationService } from '../services/medicationService'
 import { useCurrentHousehold, useCurrentUser } from '@/core/store'
-import { Medication, MedicationFormData, MedicationFilter, MedicationListOptions, MedicationIntake } from '../types'
+import type { MedicationFormData, MedicationListOptions } from '../types'
 
 // Query keys
 export const medicationKeys = {

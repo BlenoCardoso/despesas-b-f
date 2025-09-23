@@ -26,6 +26,11 @@ export class DatabaseMiddleware {
     return !!memberDoc
   }
 
+  // Public wrapper so other modules can verify membership before direct DB reads
+  static async checkMembership(householdId: string): Promise<boolean> {
+    return await this.validateMembership(householdId)
+  }
+
   private static addAuditFields<T extends BaseModel>(
     operation: DatabaseOperation<T>,
     type: 'create' | 'update'
@@ -165,6 +170,15 @@ export class DatabaseMiddleware {
   // Use `any` here to avoid mixing Table and Collection types in this thin middleware.
   let collection: any = db.table(collectionName)
     
+    // If query is scoped to a household, validate membership before reading
+    if (filters && typeof filters === 'object' && 'householdId' in filters) {
+      const householdId = (filters as any).householdId
+      const hasAccess = await this.validateMembership(householdId)
+      if (!hasAccess) {
+        throw new Error('Sem permissão para ler dados deste household')
+      }
+    }
+
     // Start transaction
     const tx = db.transaction('r', collection, async () => {
       // Apply filters with compound where
@@ -238,6 +252,15 @@ export class DatabaseMiddleware {
       filters = where as Record<string, any>
     }
 
+    // If filters include householdId, validate membership
+    if (filters && typeof filters === 'object' && 'householdId' in filters) {
+      const householdId = (filters as any).householdId
+      const hasAccess = await this.validateMembership(householdId)
+      if (!hasAccess) {
+        throw new Error('Sem permissão para ler dados deste household')
+      }
+    }
+
     // Reuse queryPaginated for paging behavior but request a large limit
     const result = await this.queryPaginated<T>(collName, filters, {
       limit,
@@ -248,6 +271,17 @@ export class DatabaseMiddleware {
   }
 
   static async get<T extends BaseModel>(opts: { collection: string; id: string }): Promise<T | undefined> {
-    return await db.table(opts.collection).get(opts.id) as T | undefined
+    const doc = await db.table(opts.collection).get(opts.id) as T | undefined
+    if (!doc) return undefined
+
+    // If document scoped to household, validate membership
+    if ((doc as any).householdId) {
+      const hasAccess = await this.validateMembership((doc as any).householdId)
+      if (!hasAccess) {
+        throw new Error('Sem permissão para ler este documento')
+      }
+    }
+
+    return doc
   }
 }

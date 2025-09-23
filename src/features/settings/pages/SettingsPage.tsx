@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { useUserPreferences, useUpdatePreferences, useExportData, useCreateBackup } from '../hooks/useSettings'
+import { useState, useEffect } from 'react'
+import { useUserPreferences, useExportData, useCreateBackup } from '../hooks/useSettings'
+import { useCurrentHousehold, useCurrentUser, useAppStore } from '@/core/store'
+import { householdService } from '@/features/households/services/householdService'
 import { ThemeSelector } from '../components/ThemeSelector'
 import { 
   Settings, 
@@ -8,9 +10,7 @@ import {
   Bell, 
   Shield, 
   Database, 
-  Moon,
-  Sun,
-  Monitor,
+  
   Lock,
   Download,
   Upload,
@@ -20,13 +20,93 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { exportCSV, exportPDF, download as downloadBlob } from '@/services/exportService'
+
+function HouseholdSettingsCard() {
+  const household = useCurrentHousehold()
+  const currentUser = useCurrentUser()
+  const { setCurrentHousehold } = useAppStore()
+  const [saving, setSaving] = useState(false)
+  const [value, setValue] = useState<string>(
+    (household as any)?.settings?.canEditOthersExpenses ?? 'owner-admin'
+  )
+
+  // Atualizar localmente quando household mudar
+  useEffect(() => {
+    setValue((household as any)?.settings?.canEditOthersExpenses ?? 'owner-admin')
+  }, [household])
+
+  const canEdit = (() => {
+    if (!household || !currentUser) return false
+    // apenas owner ou admin podem alterar configurações da casa
+    const member = (household as any).members?.find((m: any) => m.userId === currentUser.id)
+    return (household as any).ownerId === currentUser.id || member?.role === 'admin'
+  })()
+
+  const handleSave = async () => {
+    if (!household) return
+    setSaving(true)
+    try {
+      await householdService.updateHousehold(household.id, {
+        settings: {
+          ...((household as any).settings || {}),
+          canEditOthersExpenses: value as any
+        }
+      } as any)
+      toast.success('Configuração salva')
+      // Atualizar store: set currentHousehold to refreshed household
+      const refreshed = await householdService.getHousehold(household.id)
+      if (refreshed) {
+        setCurrentHousehold(refreshed)
+      }
+    } catch (err) {
+      toast.error('Erro ao salvar configuração')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurações da Casa</h3>
+      <p className="text-sm text-gray-500 mb-4">Controle quem pode editar/excluir despesas criadas por outros membros.</p>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quem pode editar/excluir despesas de outros?</label>
+          <select
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={!canEdit}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="owner-admin">Somente Dono e Admin</option>
+            <option value="all">Todos os membros</option>
+          </select>
+          {!canEdit && (
+            <p className="text-xs text-gray-500 mt-2">Apenas o proprietário ou administradores podem alterar essa opção.</p>
+          )}
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleSave}
+            disabled={!canEdit || saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState('profile')
   
   // Hooks para configurações
   const { data: preferences } = useUserPreferences()
-  const updatePreferences = useUpdatePreferences()
   const exportData = useExportData()
   const createBackup = useCreateBackup()
   
@@ -373,27 +453,37 @@ export function SettingsPage() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Exportar Dados</h3>
         
         <div className="space-y-4">
-          <button 
-            onClick={() => {
-              exportData.mutate('expenses')
-              toast.success('Exportando despesas...')
-            }}
-            disabled={exportData.isPending}
-            className="w-full flex items-center justify-between p-4 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            <div className="flex items-center space-x-3">
-              <Download className="w-5 h-5 text-gray-600" />
-              <div className="text-left">
-                <h4 className="font-medium text-gray-900">Exportar Despesas</h4>
-                <p className="text-sm text-gray-500">Baixar em formato Excel ou PDF</p>
-              </div>
-            </div>
-            {exportData.isPending ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-            ) : (
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            )}
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  const blob = await exportCSV()
+                  await downloadBlob(`despesas-${new Date().toISOString().slice(0,10)}.csv`, blob)
+                  toast.success('CSV gerado e baixado')
+                } catch (err) {
+                  console.error(err)
+                  toast.error('Erro ao exportar CSV')
+                }
+              }}
+              className="w-full flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <Download className="w-5 h-5 text-gray-600 mr-2" /> CSV
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await exportPDF()
+                  toast.success('PDF gerado — ver nova aba')
+                } catch (err) {
+                  console.error(err)
+                  toast.error('Erro ao exportar PDF')
+                }
+              }}
+              className="w-full flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <Download className="w-5 h-5 text-gray-600 mr-2" /> PDF
+            </button>
+          </div>
           
           <button 
             onClick={() => {
@@ -419,6 +509,8 @@ export function SettingsPage() {
         </div>
       </div>
 
+  {/* Configurações da household (permissões) */}
+  <HouseholdSettingsCard />
       <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
         <h3 className="text-lg font-semibold text-red-900 mb-4">Zona de Perigo</h3>
         

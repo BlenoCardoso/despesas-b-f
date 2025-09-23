@@ -1,5 +1,6 @@
 import { db } from '@/core/db/database'
 import type { Account, TransferPayload } from '../types'
+import { BalanceService } from '@/features/expenses/services/balanceService'
 
 export class AccountService {
   async listAccounts(householdId: string): Promise<Account[]> {
@@ -42,20 +43,42 @@ export class AccountService {
     if (typeof from.balance === 'number') from.balance = (from.balance || 0) - amount
     if (typeof to.balance === 'number') to.balance = (to.balance || 0) + amount
 
-    await Promise.all([
-      db.accounts.put(from as any),
-      db.accounts.put(to as any),
-      // Record transfer as a settleUpRecord (reusing existing table) so history exists
-      db.settleUpRecords.add({
+    // Persist updates and use BalanceService to create a richer settle record with metadata
+    await db.accounts.put(from as any)
+    await db.accounts.put(to as any)
+
+    try {
+      const balanceSvc = new BalanceService()
+      await balanceSvc.settleUp({
         householdId,
         fromMemberId: createdBy || 'system',
         toMemberId: to.id,
         amount,
+        expenseIds: [],
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear(),
-        settledAt: new Date().toISOString()
-      } as any)
-    ])
+        notes: notes,
+        paymentMethod: 'transfer',
+        paymentDate: new Date(),
+        status: 'registered'
+      })
+    } catch (e) {
+      // Fallback: add minimal settleUpRecords in DB if BalanceService fails for some reason
+      try {
+        await db.settleUpRecords.add({
+          householdId,
+          fromMemberId: createdBy || 'system',
+          toMemberId: to.id,
+          amount,
+          month: new Date().getMonth() + 1,
+          year: new Date().getFullYear(),
+          settledAt: new Date().toISOString(),
+          notes: notes
+        } as any)
+      } catch (err) {
+        console.warn('Failed to persist settle record', err)
+      }
+    }
   }
 }
 

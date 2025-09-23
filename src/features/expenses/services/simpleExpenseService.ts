@@ -26,11 +26,28 @@ export class SimpleExpenseService {
     console.log('💾 Saving expense to database:', expense)
     
     try {
+      // log available DB methods to help debug runtime issues with mocks or bundler
+      try { console.log('db.expenses methods:', {
+        add: typeof (db.expenses as any).add,
+        put: typeof (db.expenses as any).put,
+        update: typeof (db.expenses as any).update,
+      }) } catch (e) { /* ignore logging errors */ }
+
       await db.expenses.add(expense as any)
       console.log('✅ Expense saved successfully with ID:', expense.id)
       return expense
     } catch (error) {
-      console.error('❌ Error saving expense:', error)
+      // Capture rich error details to help debugging in-browser
+      try {
+        console.error('❌ Error saving expense:', {
+          message: (error as any)?.message,
+          stack: (error as any)?.stack,
+          name: (error as any)?.name,
+          expensePreview: { id: expense.id, householdId: expense.householdId, userId: expense.userId, title: expense.title, amount: expense.amount }
+        })
+      } catch (e) {
+        console.error('❌ Error while logging original error', e)
+      }
       throw error
     }
   }

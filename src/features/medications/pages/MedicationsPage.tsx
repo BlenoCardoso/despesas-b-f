@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Plus, Search, Filter, Pill, AlertTriangle, Clock, CheckCircle2, Package } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Search, Filter, Pill, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react'
 import { 
   useMedications, 
   useMedicationStats, 

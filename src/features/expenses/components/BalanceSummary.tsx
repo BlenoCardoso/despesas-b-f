@@ -18,14 +18,14 @@ import {
   TableHeader,
   TableRow 
 } from '@/components/ui/table'
-import { ChevronDownIcon, ChevronUpIcon, ArrowRightIcon } from '@radix-ui/react-icons'
+import { ChevronDownIcon, ChevronUpIcon, ArrowRightIcon } from '@/components/ui/icons'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useHouseholdBalance } from '../hooks/useHouseholdBalance'
 import { formatCurrency } from '@/utils/formatters'
 import { subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { useHouseholdMembers } from '@/features/households/hooks/useHouseholdMembers'
-import { useBudgets, useBudgetSummary } from '../hooks/useExpenses'
+import { useBudgets, useBudgetSummary, useBudgetAlerts } from '../hooks/useExpenses'
 // ... existing imports
 import { Modal, ModalContent, ModalHeader, ModalFooter, ModalBody } from '@/components/ui/modal'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -55,6 +55,8 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
   const [toAccount, setToAccount] = useState('')
   const [transferAmount, setTransferAmount] = useState<number | ''>('')
   const [selectedTransfers, setSelectedTransfers] = useState<number[]>([])
+  // local editable map for transfer metadata
+  const [transferEdits, setTransferEdits] = useState<Record<number, { amount?: number; paymentDate?: string; paymentMethod?: string }>>({})
   const queryClient = useQueryClient()
   const balanceService = new BalanceService()
   const { 
@@ -73,6 +75,14 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
   const periodEnd = endOfMonth(selectedMonth)
   const { data: budgets } = useBudgets(monthStr)
   const { data: budgetSummary } = useBudgetSummary(monthStr)
+  const { data: budgetAlerts } = useBudgetAlerts(monthStr)
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem(`budget-alert-dismissed-${monthStr}`)
+    } catch (e) {
+      return false
+    }
+  })
 
   // Load accounts for transfer UI
   useEffect(() => {
@@ -107,30 +117,35 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
     )
   }
 
-  // compute opening balance from previous month
-  const [openingBalance, setOpeningBalance] = useState<number | null>(null)
-
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try {
-        const prev = subMonths(selectedMonth, 1)
-        const svc = new BalanceService()
-        const report = await svc.calculateMonthlyBalance(householdId, prev.getMonth() + 1, prev.getFullYear())
-        if (!mounted) return
-        // derive an opening total (net) from previous month's report; fallback to 0
-        setOpeningBalance(report?.totalBalance ?? 0)
-      } catch (e) {
-        if (!mounted) return
-        setOpeningBalance(0)
-      }
-    })()
-    return () => { mounted = false }
-  }, [householdId, selectedMonth])
+  // previous month opening balance not used currently
   const memberMap = new Map(members.map(m => [m.userId, m.user]))
 
   return (
     <Card className="w-full">
+      {/* Budget alerts banner */}
+      {budgetAlerts && budgetAlerts.length > 0 && !dismissed && (
+        <div className="bg-yellow-100 dark:bg-yellow-900/60 border-b p-3 flex items-start gap-3">
+          <div className="flex-1">
+            <div className="font-medium">Aviso de orçamento</div>
+            <div className="text-sm text-muted-foreground">
+              {budgetAlerts.slice(0,3).map((a: any) => (
+                <div key={a.budget.id} className={a.alertType === 'exceeded' ? 'text-red-700' : 'text-yellow-800'}>
+                  {a.message}
+                </div>
+              ))}
+              {budgetAlerts.length > 3 && <div className="text-xs text-muted-foreground">E mais {budgetAlerts.length - 3} alertas...</div>}
+            </div>
+          </div>
+          <div>
+            <Button size="sm" variant="ghost" onClick={() => {
+              try {
+                localStorage.setItem(`budget-alert-dismissed-${monthStr}`, '1')
+              } catch (e) {}
+              setDismissed(true)
+            }}>Fechar</Button>
+          </div>
+        </div>
+      )}
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -153,105 +168,172 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
         </CardDescription>
       </CardHeader>
 
+      {/* Sticky summary bar - aparece ao rolar */}
+      <div className="sticky top-0 z-20 bg-white dark:bg-black/80 border-b">
+        <div className="max-w-full mx-auto px-4 py-2">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <span className="text-xs text-muted-foreground">Total do mês</span>
+              <span className="text-sm font-semibold">{formatCurrency(balance.totalExpenses)}</span>
+            </div>
+
+            <div className="flex items-center gap-3 overflow-x-auto hide-scrollbar">
+              {/* show compact chips for each member with avatar and their balance */}
+              {balance.memberBalances.map(mb => {
+                const member = memberMap.get(mb.memberId) as any
+                if (!member) return null
+                return (
+                  <div key={mb.memberId} className="flex-shrink-0 flex items-center gap-2 px-2 py-1 rounded-md border">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={member.photoURL || member.displayName || ''} />
+                      <AvatarFallback>{member.name?.[0]?.toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                      <div className="text-sm">
+                        <div className="font-medium">{member.name}</div>
+                        <div className={mb.balance > 0 ? 'text-emerald-600 dark:text-emerald-400 text-xs' : mb.balance < 0 ? 'text-rose-600 dark:text-rose-400 text-xs' : 'text-xs'}>{formatCurrency(mb.balance)}</div>
+                      </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <CardContent>
         <div className="space-y-6">
           {/* Monthly summary header actions */}
           <div className="flex items-center justify-end gap-2">
-            <Button size="sm" onClick={async () => {
-              // Export CSV for selected month
-              try {
-                const ExportSvc = (await import('../services/exportService')).ExportService
-                const svc = new ExportSvc()
-                const csv = await svc.exportCSV({
-                  householdId,
-                  startDate: periodStart,
-                  endDate: periodEnd,
-                  includeCategories: true,
-                  includePayers: true,
-                  includeNotes: true
-                } as any)
-                svc.download(`despesas-${monthStr}.csv`, csv)
-              } catch (e) {
-                console.warn('Export CSV failed', e)
-              }
-            }}>Exportar CSV</Button>
+            <div className="hidden sm:flex items-center gap-2">
+              <Button size="sm" onClick={async () => {
+                try {
+                  const { exportCSV, download } = await import('@/services/exportService')
+                  const csvBlob = await exportCSV({ householdId, startDate: periodStart, endDate: periodEnd })
+                  await download(`despesas-${monthStr}.csv`, csvBlob)
+                } catch (e) {
+                  console.warn('Export CSV failed', e)
+                }
+              }}>Exportar CSV</Button>
 
-            <Button size="sm" onClick={async () => {
-              try {
-                const ExportSvc = (await import('../services/exportService')).ExportService
-                const svc = new ExportSvc()
-                const doc = await svc.exportPDF({
-                  householdId,
-                  startDate: periodStart,
-                  endDate: periodEnd,
-                  includeCategories: true,
-                  includePayers: true,
-                  includeNotes: true
-                } as any)
-                // Save PDF
-                const blob = doc.output('blob')
-                svc.download(`despesas-${monthStr}.pdf`, blob)
-              } catch (e) {
-                console.warn('Export PDF failed', e)
-              }
-            }}>Exportar PDF</Button>
+              <Button size="sm" onClick={async () => {
+                try {
+                  const { exportPDF } = await import('@/services/exportService')
+                  await exportPDF({ householdId, startDate: periodStart, endDate: periodEnd })
+                } catch (e) {
+                  console.warn('Export PDF failed', e)
+                }
+              }}>Exportar PDF</Button>
+            </div>
+
+            {/* Mobile compact menu */}
+            <div className="sm:hidden relative">
+              <button className="px-3 py-2 border rounded" onClick={() => {
+                const menu = document.getElementById('export-menu-mobile')
+                if (menu) menu.classList.toggle('hidden')
+              }}>⋯</button>
+              <div id="export-menu-mobile" className="hidden absolute right-0 mt-2 w-40 bg-white shadow rounded border z-40">
+                <button className="w-full text-left px-3 py-2 hover:bg-muted" onClick={async () => {
+                  try {
+                    const { exportCSV, download } = await import('@/services/exportService')
+                    const csvBlob = await exportCSV({ householdId, startDate: periodStart, endDate: periodEnd })
+                    await download(`despesas-${monthStr}.csv`, csvBlob)
+                  } catch (e) { console.warn(e) }
+                }}>Exportar CSV</button>
+                <button className="w-full text-left px-3 py-2 hover:bg-muted" onClick={async () => {
+                  try {
+                    const { exportPDF } = await import('@/services/exportService')
+                    await exportPDF({ householdId, startDate: periodStart, endDate: periodEnd })
+                  } catch (e) { console.warn(e) }
+                }}>Exportar PDF</button>
+              </div>
+            </div>
           </div>
           {/* Lista de saldos por membro */}
           <div>
             <h4 className="text-sm font-semibold mb-3">Saldos individuais</h4>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Membro</TableHead>
-                  <TableHead>Pagou</TableHead>
-                  <TableHead>Deve pagar</TableHead>
-                  <TableHead>Saldo</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {balance.memberBalances.map(memberBalance => {
-                  const member = memberMap.get(memberBalance.memberId) as any
-                  if (!member) return null
 
-                  return (
-                    <TableRow key={memberBalance.memberId}>
-                      <TableCell className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={member.photoURL || member.displayName || ''} />
-                          <AvatarFallback>
-                            {member.name?.[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex items-center gap-2">
-                          <span>{member.name || member.displayName}</span>
-                          {balance.roundingAdjustments && (
-                            (() => {
-                              const r = balance.roundingAdjustments!.find(x => x.memberId === memberBalance.memberId)
-                              if (!r || r.cents === 0) return null
-                              const sign = r.cents > 0 ? '+' : '-'
-                              return <span className="text-xs text-muted-foreground">{sign}{Math.abs(r.cents)}c</span>
-                            })()
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatCurrency(memberBalance.paid)}</TableCell>
-                      <TableCell>{formatCurrency(memberBalance.share)}</TableCell>
-                      <TableCell>
-                        <span className={
-                          memberBalance.balance > 0 
-                            ? 'text-green-600 dark:text-green-400'
-                            : memberBalance.balance < 0
-                              ? 'text-red-600 dark:text-red-400'
-                              : ''
-                        }>
-                          {formatCurrency(memberBalance.balance)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+            {/* Mobile stacked view (small screens) */}
+            <div className="block sm:hidden space-y-2">
+              {balance.memberBalances.map(memberBalance => {
+                const member = memberMap.get(memberBalance.memberId) as any
+                if (!member) return null
+                return (
+                  <div key={memberBalance.memberId} className="flex items-center justify-between p-3 rounded border bg-white">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar className="h-8 w-8 flex-shrink-0">
+                        <AvatarImage src={member.photoURL || member.displayName || ''} />
+                        <AvatarFallback>{member.name?.[0]?.toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-sm">{member.name}</div>
+                        <div className="text-xs text-muted-foreground">Pagou {formatCurrency(memberBalance.paid)}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold">{formatCurrency(memberBalance.balance)}</div>
+                      <div className="text-xs text-muted-foreground">Deve {formatCurrency(memberBalance.share)}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Desktop/tablet view */}
+            <div className="hidden sm:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Membro</TableHead>
+                    <TableHead>Pagou</TableHead>
+                    <TableHead>Deve pagar</TableHead>
+                    <TableHead>Saldo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {balance.memberBalances.map(memberBalance => {
+                    const member = memberMap.get(memberBalance.memberId) as any
+                    if (!member) return null
+
+                    return (
+                      <TableRow key={memberBalance.memberId}>
+                        <TableCell className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={member.photoURL || member.displayName || ''} />
+                            <AvatarFallback>
+                              {member.name?.[0]?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex items-center gap-2">
+                            <span>{member.name || member.displayName}</span>
+                            {balance.roundingAdjustments && (
+                              (() => {
+                                const r = balance.roundingAdjustments!.find(x => x.memberId === memberBalance.memberId)
+                                if (!r || r.cents === 0) return null
+                                const sign = r.cents > 0 ? '+' : '-'
+                                return <span className="text-xs text-muted-foreground">{sign}{Math.abs(r.cents)}c</span>
+                              })()
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatCurrency(memberBalance.paid)}</TableCell>
+                        <TableCell>{formatCurrency(memberBalance.share)}</TableCell>
+                        <TableCell>
+                          <span className={
+                            memberBalance.balance > 0 
+                              ? 'text-green-600 dark:text-green-400'
+                              : memberBalance.balance < 0
+                                ? 'text-red-600 dark:text-red-400'
+                                : ''
+                          }>
+                            {formatCurrency(memberBalance.balance)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           {/* Transferências sugeridas */}
@@ -280,36 +362,38 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
                   </Button>
                 </div>
               </div>
-              <div className="space-y-2">
-                {balance.suggestedTransfers.map((transfer, index) => {
+                <div className="space-y-2">
+                  {balance.suggestedTransfers.map((transfer, index) => {
                   const from = memberMap.get(transfer.fromMemberId)
                   const to = memberMap.get(transfer.toMemberId)
                   if (!from || !to) return null
 
                   return (
-                    <div 
-                      key={index}
-                      className="flex items-center gap-2 p-2 rounded bg-muted/50"
-                    >
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={(from as any).photoURL || (from as any).displayName || ''} />
-                        <AvatarFallback>
-                          {from.name?.[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{from.name}</span>
-                      <ArrowRightIcon className="mx-2" />
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={(to as any).photoURL || (to as any).displayName || ''} />
-                        <AvatarFallback>
-                          {to.name?.[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{to.name}</span>
-                      <span className="ml-auto font-medium">
-                        {formatCurrency(transfer.amount)}
-                      </span>
-                    </div>
+                      <div 
+                        key={index}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded bg-muted/50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={(from as any).photoURL || (from as any).displayName || ''} />
+                            <AvatarFallback>
+                              {from.name?.[0]?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{from.name}</span>
+                          <ArrowRightIcon className="mx-2 hidden sm:inline" />
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={(to as any).photoURL || (to as any).displayName || ''} />
+                            <AvatarFallback>
+                              {to.name?.[0]?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{to.name}</span>
+                        </div>
+                        <div className="ml-auto font-medium text-right sm:text-right">
+                          {formatCurrency(transfer.amount)}
+                        </div>
+                      </div>
                   )
                 })}
               </div>
@@ -332,25 +416,46 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
 
                     return (
                       <div key={index} className="flex items-center gap-2 p-2 rounded bg-muted/50">
-                        <Checkbox 
-                          checked={selectedTransfers.includes(index)}
-                          onCheckedChange={(v: boolean | undefined) => {
-                            setSelectedTransfers(prev => v ? [...prev, index] : prev.filter(i => i !== index))
-                          }}
-                        />
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={(from as any).photoURL || (from as any).displayName || ''} />
-                            <AvatarFallback>{from.name?.[0]?.toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{from.name}</span>
-                          <ArrowRightIcon className="mx-2" />
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={(to as any).photoURL || (to as any).displayName || ''} />
-                            <AvatarFallback>{to.name?.[0]?.toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{to.name}</span>
-                          <span className="ml-auto font-medium">{formatCurrency(transfer.amount)}</span>
+                        <div className="flex items-center gap-2 w-full">
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              checked={selectedTransfers.includes(index)}
+                              onCheckedChange={(v: boolean | undefined) => {
+                                setSelectedTransfers(prev => v ? [...prev, index] : prev.filter(i => i !== index))
+                              }}
+                            />
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={(from as any).photoURL || (from as any).displayName || ''} />
+                              <AvatarFallback>{from.name?.[0]?.toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm">{from.name}</span>
+                            <ArrowRightIcon className="mx-2" />
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={(to as any).photoURL || (to as any).displayName || ''} />
+                              <AvatarFallback>{to.name?.[0]?.toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm">{to.name}</span>
+                          </div>
+                          <div className="ml-auto flex items-center gap-2">
+                            <Input className="w-28" value={(transferEdits[index]?.amount ?? transfer.amount) as any} onChange={e => {
+                              const v = Number(e.target.value) || 0
+                              setTransferEdits(prev => ({ ...prev, [index]: { ...(prev[index] || {}), amount: v } }))
+                            }} />
+                            <Input type="date" className="w-36" value={transferEdits[index]?.paymentDate ?? ''} onChange={e => {
+                              setTransferEdits(prev => ({ ...prev, [index]: { ...(prev[index] || {}), paymentDate: e.target.value } }))
+                            }} />
+                            <Select onValueChange={v => setTransferEdits(prev => ({ ...prev, [index]: { ...(prev[index] || {}), paymentMethod: v } }))} defaultValue={transferEdits[index]?.paymentMethod || 'pix'}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pix">Pix</SelectItem>
+                                <SelectItem value="bank_transfer">Transferência</SelectItem>
+                                <SelectItem value="money">Dinheiro</SelectItem>
+                                <SelectItem value="other">Outro</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       </div>
                     )
@@ -367,16 +472,24 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
 
                       for (const idx of picks) {
                         const t = balance.suggestedTransfers[idx]
+                        const edited = transferEdits[idx] || {}
                         try {
+                          const amount = edited.amount ?? t.amount
+                          const paymentDate = edited.paymentDate ? new Date(edited.paymentDate) : new Date()
+                          const paymentMethod = edited.paymentMethod || 'pix'
+
                           await balanceService.settleUp({
                             householdId,
                             fromMemberId: t.fromMemberId,
                             toMemberId: t.toMemberId,
-                            amount: t.amount,
+                            amount,
                             expenseIds: [],
                             month: selectedMonth.getMonth() + 1,
                             year: selectedMonth.getFullYear(),
-                            notes: 'Acerto mensal'
+                            notes: 'Acerto mensal',
+                            paymentMethod,
+                            paymentDate,
+                            status: 'registered'
                           })
                         } catch (e) {
                           // continue com próximas, coleta de erros pode ser adicionada
@@ -539,6 +652,10 @@ export function BalanceSummary({ householdId }: BalanceSummaryProps) {
                   </div>
                   <div className="w-full bg-muted h-2 rounded mt-1 overflow-hidden">
                     <div style={{ width: `${Math.min(100, Math.round(b.percentage))}%` }} className={`h-2 ${b.percentage >= 100 ? 'bg-red-600' : b.percentage >= 80 ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-muted-foreground">{Math.round(b.percentage)}%</span>
+                    {b.percentage >= 100 ? <span className="text-xs text-red-600">Ultrapassou</span> : b.percentage >= 80 ? <span className="text-xs text-yellow-600">Perigo</span> : <span className="text-xs text-muted-foreground">OK</span>}
                   </div>
                 </div>
               </div>

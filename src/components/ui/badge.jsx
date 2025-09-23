@@ -1,4 +1,4 @@
-import * as React from "react"
+// React namespace not referenced directly in this file
 import { Slot } from "@radix-ui/react-slot"
 import { cva } from "class-variance-authority";
 
