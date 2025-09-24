@@ -1,4 +1,4 @@
-// React import removed intentionally (no JSX in this module)
+import React from 'react'
 import { generateId } from '@/core/utils/id'
 
 export interface ErrorInfo {
@@ -42,17 +42,13 @@ class ErrorTracker {
     window.addEventListener('error', (event) => {
       this.captureError({
         message: event.message as string,
-        // @ts-expect-error: event.error may be undefined or non-Error
-        stack: event.error?.stack,
+  stack: event.error?.stack,
         severity: 'high',
         category: 'javascript',
         metadata: {
-          // @ts-expect-error: filename/lineno/colno exist on window error event
-          filename: event.filename,
-          // @ts-expect-error: lineno exists on window error event
-          lineno: event.lineno,
-          // @ts-expect-error: colno exists on window error event
-          colno: event.colno
+          filename: (event as any).filename,
+          lineno: (event as any).lineno,
+          colno: (event as any).colno
         }
       })
     })
@@ -117,9 +113,7 @@ class ErrorTracker {
             name: 'LCP',
             value: entry.startTime,
             metadata: {
-              // @ts-expect-error: element may be present on the entry
               element: (entry as any).element?.tagName,
-              // @ts-expect-error: url may be present on the entry
               url: (entry as any).url
             }
           })
@@ -132,7 +126,6 @@ class ErrorTracker {
         for (const entry of list.getEntries()) {
           this.captureMetric({
             name: 'FID',
-            // @ts-expect-error: processingStart is valid for first-input entries
             value: (entry as any).processingStart - entry.startTime,
             metadata: {
               name: entry.name,

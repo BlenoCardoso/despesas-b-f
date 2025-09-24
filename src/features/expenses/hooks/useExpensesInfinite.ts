@@ -40,6 +40,7 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
       if (filter) {
         if (filter.accountId) filters.accountId = filter.accountId
         if (filter.paidById) filters.paidById = filter.paidById
+        if (filter.sharedOnly) filters.sharedOnly = true
         if (filter.categoryIds) filters.categoryId = filter.categoryIds[0] // simple mapping for now
         if (filter.startDate) filters.date = { __range: [new Date(filter.startDate).toISOString(), (filters.date && (filters.date as any).__range?.[1]) || undefined] }
         if (filter.endDate) filters.date = { __range: [(filters.date && (filters.date as any).__range?.[0]) || undefined, new Date(filter.endDate).toISOString()] }
@@ -51,7 +52,8 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
       const result = await DatabaseMiddleware.queryPaginated<any>('expenses', filters, pageOptions)
 
       const items = result.items || []
-      const hasMore = !!result.cursor
+  // hasMore intentionally unused here (kept for possible future conditions)
+  // intentionally not using hasMore here
 
       const flexResults: FlexibleExpense[] = items.map((expense: any) => ({
         ...expense,

@@ -5,9 +5,7 @@ import { startOfMonth, endOfMonth, startOfYear, endOfYear, format, subMonths } f
 import { ptBR } from 'date-fns/locale'
 import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
 
-import { Task } from '@/features/tasks/types'
-import { Medication, MedicationIntake } from '@/features/medications/types'
-import { CalendarEvent } from '@/features/calendar/types'
+import { Medication } from '@/features/medications/types'
 export interface ExpenseReport {
   period: string
   totalExpenses: number

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { expenseService } from '../expenseService'
 import { db } from '@/core/db/database'
-import { Expense } from '../../types'
+// expense type not used in this test file
 
 // Mock the database
 vi.mock('@/core/db/database', () => ({
@@ -25,12 +25,12 @@ describe('ExpenseService', () => {
   const mockHouseholdId = 'household-1'
   const mockUserId = 'user-1'
 
-  const mockExpense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'> = {
+  const mockExpense: any = {
     householdId: mockHouseholdId,
     description: 'Test Expense',
     amount: 100.50,
     categoryId: 'category-1',
-    date: new Date(),
+    date: new Date().toISOString(),
     type: 'expense',
     paidBy: mockUserId,
     splitBetween: [mockUserId],
@@ -69,7 +69,7 @@ describe('ExpenseService', () => {
         recurringConfig: {
           frequency: 'monthly' as const,
           interval: 1,
-          endDate: new Date('2024-12-31')
+          endDate: new Date('2024-12-31').toISOString()
         }
       }
 

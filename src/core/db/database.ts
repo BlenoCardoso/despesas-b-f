@@ -11,7 +11,7 @@ import {
   Budget, 
   AppSettings
 } from '@/types/global'
-import { Household, HouseholdMember, HouseholdInvite } from '@/features/households/types'
+import { Household, HouseholdMember, HouseholdInvite } from '@/features/households/types/index'
 import { User } from '@/core/types/user'
 
 export interface DatabaseSchema {

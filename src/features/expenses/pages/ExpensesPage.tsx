@@ -30,6 +30,7 @@ export function ExpensesPage() {
   const [savedFilters, setSavedFilters] = useState<Array<{ id: string; name: string; filters: any; search?: string }>>([])
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
+  const [coupleMode, setCoupleMode] = useState<boolean>(false)
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = authService.getCurrentUser()
@@ -48,6 +49,19 @@ export function ExpensesPage() {
       // ignore
     }
   }, [householdIdForList])
+
+  // load couple mode preference
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`expense:coupleMode:${householdIdForList}`)
+      if (raw) setCoupleMode(raw === 'true')
+    } catch (e) {}
+  }, [householdIdForList])
+
+  const persistCoupleMode = (v: boolean) => {
+    setCoupleMode(v)
+    try { localStorage.setItem(`expense:coupleMode:${householdIdForList}`, String(v)) } catch (e) {}
+  }
 
   const persistSavedFilters = (next: typeof savedFilters) => {
     setSavedFilters(next)
@@ -267,6 +281,15 @@ export function ExpensesPage() {
           <p className="text-gray-600 mt-1">Gerencie suas despesas mensais</p>
         </div>
         <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              title="Modo Casal — dividir 50/50 por padrão"
+              onClick={() => persistCoupleMode(!coupleMode)}
+              className={`px-3 py-1 rounded-full text-sm border ${coupleMode ? 'chip-primary-filled text-on-primary' : 'bg-white text-gray-700'}`}
+            >
+              {coupleMode ? 'Modo Casal: ON' : 'Modo Casal: OFF'}
+            </button>
+          </div>
           <Button onClick={() => setShowExpenseForm(true)} className="flex items-center gap-2 bg-primary-solid text-on-primary">
             <Plus className="h-4 w-4" />
             Nova Despesa
@@ -433,6 +456,7 @@ export function ExpensesPage() {
                 filter={{
                   accountId: selectedAccount,
                   participantIds: selectedParticipants && selectedParticipants.length > 0 ? selectedParticipants : undefined,
+                  sharedOnly: activeFilters.includes('shared') ? true : undefined,
                   searchText: searchText || undefined,
                   paymentStatus: activeFilters.includes('paid') ? 'paid' : activeFilters.includes('pending') ? 'unpaid' : undefined,
                 } as any}
@@ -487,6 +511,9 @@ export function ExpensesPage() {
                   setEditingExpense(null)
                 }}
                 isLoading={false}
+                coupleMode={coupleMode}
+                members={members}
+                currentUser={currentUser}
               />
             </div>
           </div>

@@ -2,7 +2,6 @@ import { db } from '@/core/db/database'
 import { Budget } from '@/types/global'
 import { generateId } from '@/core/utils/id'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
-import { expenseService } from './expenseService'
 
 export interface BudgetFormData {
   categoryId?: string // undefined = orçamento geral

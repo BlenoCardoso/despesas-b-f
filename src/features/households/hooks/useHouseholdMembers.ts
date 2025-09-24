@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { householdService } from '../services/householdService'
+import type { MemberRole } from '../types'
 
 // Hook para listar membros de uma household
 export function useHouseholdMembers(householdId: string) {
@@ -41,10 +42,11 @@ export function useUpdateMemberRole(householdId: string) {
   const mutation = useMutation({
     mutationFn: ({ memberId, newRole, updatedBy }: {
       memberId: string
-      newRole: string
+      newRole: MemberRole | string
       updatedBy: string
     }) => {
-      return householdService.updateMemberRole(householdId, memberId, newRole, updatedBy)
+      // Ensure newRole is a valid MemberRole string when calling the service
+      return householdService.updateMemberRole(householdId, memberId, newRole as MemberRole, updatedBy)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['householdMembers', householdId] })

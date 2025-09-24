@@ -27,9 +27,9 @@ export const expenseKeys = {
 
 // Expenses hooks
 export function useExpenses(options?: ExpenseListOptions) {
-  const { currentHousehold } = useAppStore()
+  const { currentHousehold: _currentHousehold } = useAppStore()
 
-  const householdId = currentHousehold?.id || ''
+  const householdId = _currentHousehold?.id || ''
 
   const query = useQuery({
     queryKey: expenseKeys.list(householdId || '', options),
@@ -348,8 +348,9 @@ export function useAttachmentBlob(blobRef: string) {
 }
 
 // Hook para despesas filtradas
-export function useFilteredExpenses(filter: ExpenseFilter, searchText?: string) {
+export function useFilteredExpenses(filter?: ExpenseFilter, searchText?: string) {
   const { currentHousehold } = useAppStore()
+  const safeFilter: ExpenseFilter = filter || ({} as ExpenseFilter)
   
   return useQuery({
     queryKey: [...expenseKeys.all, 'filtered', currentHousehold?.id || '', filter, searchText],
@@ -376,45 +377,45 @@ export function useFilteredExpenses(filter: ExpenseFilter, searchText?: string) 
       }
 
       // Filtros por data
-      if (filter.startDate || filter.endDate) {
+      if (safeFilter.startDate || safeFilter.endDate) {
         filteredExpenses = filteredExpenses.filter(expense => {
           const expenseDate = new Date(expense.date)
-          if (filter.startDate && expenseDate < filter.startDate) return false
-          if (filter.endDate && expenseDate > filter.endDate) return false
+          if (safeFilter.startDate && expenseDate < safeFilter.startDate) return false
+          if (safeFilter.endDate && expenseDate > safeFilter.endDate) return false
           return true
         })
       }
 
       // Filtros por valor
-      if (filter.minAmount !== undefined || filter.maxAmount !== undefined) {
+      if (safeFilter.minAmount !== undefined || safeFilter.maxAmount !== undefined) {
         filteredExpenses = filteredExpenses.filter(expense => {
-          if (filter.minAmount !== undefined && expense.amount < filter.minAmount) return false
-          if (filter.maxAmount !== undefined && expense.amount > filter.maxAmount) return false
+          if (safeFilter.minAmount !== undefined && expense.amount < safeFilter.minAmount) return false
+          if (safeFilter.maxAmount !== undefined && expense.amount > safeFilter.maxAmount) return false
           return true
         })
       }
 
       // Filtros por categoria
-      if (filter.categoryIds && filter.categoryIds.length > 0) {
+      if (safeFilter.categoryIds && safeFilter.categoryIds.length > 0) {
         filteredExpenses = filteredExpenses.filter(expense =>
-          filter.categoryIds!.includes(expense.categoryId)
+          expense.categoryId ? safeFilter.categoryIds!.includes(expense.categoryId) : false
         )
       }
 
       // Filtros por forma de pagamento
-      if (filter.paymentMethods && filter.paymentMethods.length > 0) {
+      if (safeFilter.paymentMethods && safeFilter.paymentMethods.length > 0) {
         filteredExpenses = filteredExpenses.filter(expense =>
-          filter.paymentMethods!.includes(expense.paymentMethod)
+          expense.paymentMethod ? safeFilter.paymentMethods!.includes(expense.paymentMethod as any) : false
         )
       }
 
       // Filtros por recorrência
-      if (filter.hasRecurrence) {
+      if (safeFilter.hasRecurrence) {
         filteredExpenses = filteredExpenses.filter(expense => !!expense.recurrence)
       }
 
       // Filtros por parcelamento
-      if (filter.hasInstallments) {
+      if (safeFilter.hasInstallments) {
         filteredExpenses = filteredExpenses.filter(expense => !!expense.installment)
       }
 

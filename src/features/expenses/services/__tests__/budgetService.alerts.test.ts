@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { vi, expect, test } from 'vitest'
 import { budgetService } from '../budgetService'
 import { db } from '@/core/db/database'
 
@@ -8,7 +9,7 @@ test('getBudgetAlerts respects user threshold preference', async () => {
   const month = '2025-09'
 
   // Clear DB mocks / insert a budget
-  ;(db.budgets as any) = { data: [], where: vi.fn(() => ({ sortBy: async (k: string) => [{ id: 'b1', householdId, categoryId: undefined, amount: 1000, month }], toArray: async () => [{ id: 'b1', householdId, categoryId: undefined, amount: 1000, month }] })) }
+  ;(db.budgets as any) = { data: [], where: vi.fn(() => ({ sortBy: async (_k: string) => [{ id: 'b1', householdId, categoryId: undefined, amount: 1000, month }], toArray: async () => [{ id: 'b1', householdId, categoryId: undefined, amount: 1000, month }] })) }
 
   // mock getSpentAmount to return 850
   vi.spyOn(budgetService, 'getSpentAmount' as any).mockImplementation(async () => 850)

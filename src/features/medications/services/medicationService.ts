@@ -1,7 +1,7 @@
 import { db } from '@/core/db/database'
 import { Medication, MedicationIntake, MedicationFormData, MedicationFilter, MedicationListOptions } from '../types'
 import { generateId } from '@/core/utils/id'
-import { addDays, addHours, addMinutes, startOfDay, endOfDay, parseISO, format } from 'date-fns'
+import { addDays, startOfDay, endOfDay, parseISO } from 'date-fns'
 
 export class MedicationService {
   /**
@@ -195,7 +195,7 @@ export class MedicationService {
           med.name.toLowerCase().includes(lowerSearchText) ||
           med.description?.toLowerCase().includes(lowerSearchText) ||
           med.prescribedBy?.toLowerCase().includes(lowerSearchText) ||
-          med.tags.some(tag => tag.toLowerCase().includes(lowerSearchText)) ||
+          (med.tags || []).some(tag => tag.toLowerCase().includes(lowerSearchText)) ||
           false
         )
       })
@@ -214,9 +214,9 @@ export class MedicationService {
     totalCost: number
     byForm: Record<string, number>
   }> {
-    const allMedications = await this.getMedications(householdId)
-    const lowStockMeds = await this.getLowStockMedications(householdId)
-    const expiringSoonMeds = await getMedicationsExpiringSoon(householdId)
+  const allMedications = await this.getMedications(householdId)
+  const lowStockMeds = await this.getLowStockMedications(householdId)
+  const expiringSoonMeds = await this.getMedicationsExpiringSoon(householdId)
 
     const totalCost = allMedications.reduce((sum, med) => sum + (med.cost || 0), 0)
     
@@ -526,7 +526,7 @@ export class MedicationService {
 
       // Tags filter
       if (filter.tags && filter.tags.length > 0) {
-        const hasMatchingTag = filter.tags.some(tag => med.tags.includes(tag))
+        const hasMatchingTag = filter.tags.some(tag => (med.tags || []).includes(tag))
         if (!hasMatchingTag) return false
       }
 
@@ -534,9 +534,9 @@ export class MedicationService {
       if (filter.searchText) {
         const searchText = filter.searchText.toLowerCase()
         const matchesName = med.name.toLowerCase().includes(searchText)
-        const matchesDescription = med.description?.toLowerCase().includes(searchText) || false
-        const matchesPrescriber = med.prescribedBy?.toLowerCase().includes(searchText) || false
-        const matchesTags = med.tags.some(tag => tag.toLowerCase().includes(searchText))
+  const matchesDescription = med.description?.toLowerCase().includes(searchText) || false
+  const matchesPrescriber = med.prescribedBy?.toLowerCase().includes(searchText) || false
+  const matchesTags = (med.tags || []).some(tag => tag.toLowerCase().includes(searchText))
         if (!matchesName && !matchesDescription && !matchesPrescriber && !matchesTags) return false
       }
 

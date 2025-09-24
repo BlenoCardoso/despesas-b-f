@@ -1,5 +1,5 @@
 import { Expense } from './expense'
-import { HouseholdMember } from '@/features/households/types'
+import { HouseholdMember } from '@/features/households/types/index'
 
 // Proporção de pagamento por membro (ex: 50/50, 60/40)
 export interface PaymentShare {

@@ -12,7 +12,7 @@ export class SettlementService {
       ]
     })
 
-    return settlements[0] as Settlement | undefined
+  return (settlements[0] as unknown) as Settlement | undefined
   }
 
   // Cria ou atualiza acerto

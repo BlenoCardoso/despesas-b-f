@@ -183,6 +183,16 @@ export class DatabaseMiddleware {
     const tx = db.transaction('r', collection, async () => {
       // Apply filters with compound where
       Object.entries(filters).forEach(([key, value]) => {
+        // Special-case mapping: allow callers to request "sharedOnly" which
+        // maps to the model field `isShared`. This keeps higher-level code
+        // using a readable flag while the DB layer filters the actual field.
+        if (key === 'sharedOnly') {
+          if (value) {
+            collection = collection.filter((item: any) => !!item.isShared)
+          }
+          return
+        }
+
         // Support a sentinel for inequality created in query() wrapper: { __not: v }
         if (value && typeof value === 'object' && '__not' in value) {
           const v = (value as any).__not

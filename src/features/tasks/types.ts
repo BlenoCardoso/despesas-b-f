@@ -5,15 +5,16 @@ export interface Task extends BaseEntity {
   description?: string
   dueDate?: Date
   done: boolean
-  status: 'pendente' | 'em_progresso' | 'concluida'
+  status: 'pendente' | 'em_progresso' | 'concluida' | 'pending' | 'in_progress' | 'completed'
   notes?: string
   tags: string[]
   priority: 'low' | 'medium' | 'high'
   completedAt?: Date
   assignedTo?: string
   category?: string
-  attachments: TaskAttachment[]
+  attachments?: TaskAttachment[]
   recurrence?: string
+  syncVersion?: number
 }
 
 export interface TaskAttachment {
@@ -38,12 +39,17 @@ export interface TaskFormData {
 }
 
 export interface TaskFilter {
-  status?: 'all' | 'pending' | 'completed' | 'overdue'
+  status?: 'all' | 'pending' | 'completed' | 'overdue' | 'pendente' | 'em_progresso' | 'concluida'
   priority?: 'low' | 'medium' | 'high'
   tags?: string[]
   dueDateFrom?: Date
   dueDateTo?: Date
   searchText?: string
+  category?: string[]
+  assignedTo?: string[]
+  dueDateStart?: Date
+  dueDateEnd?: Date
+  isOverdue?: boolean
 }
 
 export interface TaskGroup {

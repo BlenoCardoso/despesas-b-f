@@ -9,15 +9,39 @@ export class SimpleExpenseService {
   async createExpense(data: ExpenseFormData, householdId: string, userId: string): Promise<any> {
     console.log('🔧 SimpleExpenseService - createExpense called with:', { data, householdId, userId })
     
-    const expense = {
+    // normalize date: accept Date or ISO string
+    let dateStr: string | undefined = undefined
+    try {
+      if (!data.date) dateStr = undefined
+      else if (typeof data.date === 'string') {
+        // if it's an ISO string, keep the YYYY-MM-DD portion
+        dateStr = (new Date(data.date)).toISOString().split('T')[0]
+      } else if (data.date instanceof Date) {
+        dateStr = data.date.toISOString().split('T')[0]
+      } else {
+        // fallback
+        dateStr = String(data.date)
+      }
+    } catch (e) {
+      dateStr = undefined
+    }
+
+    const expense: any = {
       id: generateId(),
       householdId,
       userId,
       title: data.title,
       amount: data.amount,
       categoryId: data.categoryId,
-      date: data.date.toISOString().split('T')[0], // Convert to date string (YYYY-MM-DD)
+      date: dateStr,
       notes: data.notes || '',
+      paymentMethod: data.paymentMethod || undefined,
+      tags: data.tags || undefined,
+      // Backwards-compatible fields expected by DB and reports
+      split: data.split || undefined,
+      isShared: data.split ? true : undefined,
+      shares: data.split && Array.isArray(data.split.participants) ? data.split.participants.map((p: any) => ({ memberId: p.memberId, percentage: p.percentage, amount: p.amount })) : undefined,
+      attachments: data.attachments || undefined,
       deletedAt: null as null, // Força tipo nulo real
       createdAt: new Date(),
       updatedAt: new Date(),

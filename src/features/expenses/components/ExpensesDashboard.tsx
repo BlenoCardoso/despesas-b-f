@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function ExpensesDashboard({ householdId }: Props) {
-  const { data: expenses, isLoading } = useExpenses({ householdId })
+  const { data: expenses, isLoading } = useExpenses()
   const [showNewExpenseForm, setShowNewExpenseForm] = useState(false)
 
   // Funções de callback

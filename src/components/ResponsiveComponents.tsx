@@ -7,7 +7,7 @@ interface ResponsiveContainerProps {
   fluid?: boolean
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
   padding?: 'none' | 'sm' | 'md' | 'lg'
-  as?: keyof JSX.IntrinsicElements
+  as?: React.ElementType
 }
 
 export function ResponsiveContainer({
@@ -16,7 +16,7 @@ export function ResponsiveContainer({
   fluid = false,
   maxWidth = 'full',
   padding = 'md',
-  as: Component = 'div'
+  as: Component = 'div' as React.ElementType
 }: ResponsiveContainerProps) {
   const maxWidthClasses = {
     sm: 'max-w-sm',
@@ -61,7 +61,7 @@ interface ResponsiveGridProps {
     '2xl'?: number
   }
   gap?: 'none' | 'sm' | 'md' | 'lg'
-  as?: keyof JSX.IntrinsicElements
+  as?: React.ElementType
 }
 
 export function ResponsiveGrid({
@@ -69,7 +69,7 @@ export function ResponsiveGrid({
   className,
   cols = { xs: 1, sm: 2, md: 3, lg: 4 },
   gap = 'md',
-  as: Component = 'div'
+  as: Component = 'div' as React.ElementType
 }: ResponsiveGridProps) {
   const gapClasses = {
     none: 'gap-0',
@@ -111,7 +111,7 @@ interface ResponsiveStackProps {
   gap?: 'none' | 'sm' | 'md' | 'lg'
   align?: 'start' | 'center' | 'end' | 'stretch'
   justify?: 'start' | 'center' | 'end' | 'between' | 'around'
-  as?: keyof JSX.IntrinsicElements
+  as?: React.ElementType
 }
 
 export function ResponsiveStack({
@@ -121,7 +121,7 @@ export function ResponsiveStack({
   gap = 'md',
   align = 'start',
   justify = 'start',
-  as: Component = 'div'
+  as: Component = 'div' as React.ElementType
 }: ResponsiveStackProps) {
   const gapClasses = {
     none: 'gap-0',
@@ -221,7 +221,7 @@ interface ResponsiveTextProps {
     lg?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl' | '3xl'
   }
   weight?: 'normal' | 'medium' | 'semibold' | 'bold'
-  as?: 'p' | 'span' | 'div' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+  as?: React.ElementType
 }
 
 export function ResponsiveText({
@@ -229,7 +229,7 @@ export function ResponsiveText({
   className,
   size = { xs: 'base', sm: 'base', md: 'lg' },
   weight = 'normal',
-  as: Component = 'p'
+  as: Component = 'p' as React.ElementType
 }: ResponsiveTextProps) {
   const weightClasses = {
     normal: 'font-normal',

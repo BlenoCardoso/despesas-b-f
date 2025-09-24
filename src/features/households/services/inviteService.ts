@@ -1,14 +1,20 @@
-import { format } from 'date-fns'
-import { customAlphabet } from 'nanoid'
-import { addDoc, collection, query, where, getDocs } from 'firebase/firestore'
+import { query, where, getDocs, collection } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase'
 import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
+import type { BaseModel } from '@/types'
 
-// Gerar código único de 8 caracteres (sem ambiguidade)
-const generateCode = customAlphabet(
-  '23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 
-  8
-)
+// Gerar código único de 8 caracteres (sem ambiguidade) usando crypto
+function generateCode(): string {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const arr = new Uint8Array(8)
+  if (typeof crypto !== 'undefined' && (crypto as any).getRandomValues) {
+    ;(crypto as any).getRandomValues(arr)
+  } else {
+    // fallback
+    for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256)
+  }
+  return Array.from(arr).map(n => alphabet[n % alphabet.length]).join('')
+}
 
 // Interface de convite
 export interface Invite extends BaseModel {
@@ -38,8 +44,8 @@ export class InviteService {
     const expiresAt = new Date(now)
     expiresAt.setHours(now.getHours() + (options.expiresIn || 168))
 
-    // Criar convite
-    const invite = await DatabaseMiddleware.create<Invite>({
+    // Criar convite e retornar o registro criado
+  const id = await DatabaseMiddleware.create<any>({
       collection: 'invites',
       data: {
         householdId: options.householdId,
@@ -51,7 +57,10 @@ export class InviteService {
       }
     })
 
-    return invite
+    // Buscar o documento criado para retornar o objeto completo
+    const { db } = await import('@/core/db/database')
+    const created = await db.table('invites').get(String(id))
+    return created as Invite
   }
 
   // Gerar código único (verifica se já existe)
@@ -60,7 +69,7 @@ export class InviteService {
     let attempts = 0
     const maxAttempts = 5
 
-    while (attempts < maxAttempts) {
+  while (attempts < maxAttempts) {
       // Verificar se código existe
       const inviteQuery = query(
         collection(firestore, 'invites'),
@@ -101,7 +110,7 @@ export class InviteService {
       }
     }
 
-    const invite = snapshot.docs[0].data() as Invite
+  const invite = snapshot.docs[0].data() as Invite
 
     // Verificar expiração
     if (new Date(invite.expiresAt) < new Date()) {
@@ -138,7 +147,7 @@ export class InviteService {
       const invite = snapshot.docs[0].data() as Invite
       
       // Atualizar contador de usos
-      await DatabaseMiddleware.update<Invite>({
+  await DatabaseMiddleware.update<any>({
         collection: 'invites',
         id: snapshot.docs[0].id,
         data: {
@@ -151,7 +160,13 @@ export class InviteService {
 
   // Gerar link de convite
   static generateInviteLink(code: string): string {
-    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
+    let baseUrl = ''
+    try {
+      // Guardar acesso a import.meta.env que pode não estar tipado em tsc strict
+      baseUrl = (import.meta as any)?.env?.VITE_APP_URL || window.location.origin
+    } catch (e) {
+      baseUrl = window.location.origin
+    }
     return `${baseUrl}/convite/${code}`
   }
 }

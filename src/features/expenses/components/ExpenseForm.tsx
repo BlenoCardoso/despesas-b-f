@@ -9,6 +9,10 @@ import {
 } from '@/components/ui/select'
 import CategoryIcon from './categoryIcon'
 
+interface Member { id: string; name: string }
+
+interface User { id: string; name?: string }
+
 interface Props {
 	expense?: any
 	initialData?: any
@@ -17,9 +21,12 @@ interface Props {
 	onSuccess?: (data: any) => void
 	onCancel?: () => void
 	isLoading?: boolean
+	coupleMode?: boolean
+	members?: Member[]
+	currentUser?: User | null
 }
 
-function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit, onSuccess, onCancel, isLoading = false }: Props) {
+function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit, onSuccess, onCancel, isLoading = false, coupleMode = false, members = [], currentUser = null }: Props) {
 	if (!expense && initialData) expense = initialData
 
 	const [title, setTitle] = useState<string>(expense?.title || expense?.description || '')
@@ -35,10 +42,16 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 	const [advancedOpen, setAdvancedOpen] = useState<boolean>(false)
 	const [errors, setErrors] = useState<string[]>([])
 	const [splitMethod, setSplitMethod] = useState<'equal'|'percentage'|'exact'>('equal')
+	const [participants, setParticipants] = useState<string[]>([])
+	const [splitPreview, setSplitPreview] = useState<Array<{ participantId: string; percentage: number }>>([])
 
 	useEffect(() => {
 		if (expense?.amount != null) setAmountInput(formatCurrency(expense.amount))
 		if (expense?.categoryId) setCategoryId(expense.categoryId)
+		if (expense?.split && Array.isArray(expense.split.parts)) {
+			setSplitPreview(expense.split.parts.map((p: any) => ({ participantId: p.participantId, percentage: p.percentage })))
+			setParticipants(expense.split.parts.map((p: any) => p.participantId))
+		}
 	}, [expense])
 
 	const validate = () => {
@@ -62,6 +75,19 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 			type,
 			tags: tags.length ? tags : undefined,
 			recurrence: recorrente ? { frequency, interval } : undefined,
+		}
+
+		// If coupleMode is active and there are at least 2 members selected, include split based on preview
+		if (coupleMode && splitPreview.length >= 1) {
+			data.split = {
+				mode: 'percentage',
+				participants: splitPreview.map(p => ({ memberId: p.participantId, percentage: p.percentage })),
+				visibility: 'shared'
+			}
+		} else if (splitMethod === 'equal' && participants.length >= 2) {
+			// default equal split among selected participants
+			const per = Math.round(100 / participants.length)
+			data.split = { mode: 'percentage', participants: participants.map(id => ({ memberId: id, percentage: per })), visibility: 'shared' }
 		}
 		onSubmit?.(data)
 		onSuccess?.(data)
@@ -184,6 +210,44 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 								</span>
 							))}
 						</div>
+					</div>
+
+					<div>
+						<label className="block text-sm font-medium mb-1">Participantes</label>
+						<select multiple value={participants} onChange={(e) => setParticipants(Array.from(e.target.selectedOptions).map(o => o.value))} className="w-full border rounded px-3 py-2">
+							{(members || []).map((m: Member) => (
+								<option key={m.id} value={m.id}>{m.name}</option>
+							))}
+						</select>
+
+																	<div className="flex items-center gap-2 mt-2">
+																		<button type="button" onClick={() => {
+																			// quick 50/50 between first two selected or members[0/1]
+																			const ids = participants.length >= 2 ? participants.slice(0,2) : (members && members.length >=2 ? [members[0].id, members[1].id] : [])
+																			if (ids.length === 2) setSplitPreview([{ participantId: ids[0], percentage: 50 }, { participantId: ids[1], percentage: 50 }])
+																			else alert('Selecione pelo menos 2 participantes para usar o atalho 50/50')
+																		}} className="px-2 py-1 rounded border text-sm">50/50</button>
+																		<button type="button" onClick={() => {
+																			const ids = participants.length >= 2 ? participants.slice(0,2) : (members && members.length >=2 ? [members[0].id, members[1].id] : [])
+																			if (ids.length === 2) setSplitPreview([{ participantId: ids[0], percentage: 70 }, { participantId: ids[1], percentage: 30 }])
+																			else alert('Selecione pelo menos 2 participantes para usar o atalho 70/30')
+																		}} className="px-2 py-1 rounded border text-sm">70/30</button>
+																		<button type="button" onClick={() => {
+																			const me = currentUser?.id
+																			if (me) setSplitPreview([{ participantId: me, percentage: 100 }])
+																			else alert('Usuário atual não encontrado')
+																		}} className="px-2 py-1 rounded border text-sm">Só eu</button>
+																	</div>
+
+																	{splitPreview.length > 0 && (
+																		<div className="mt-2 text-sm">
+																			<strong>Divisão:</strong> {splitPreview.map(s => {
+																				const member = members.find(m => m.id === s.participantId)
+																				const name = member ? member.name : s.participantId
+																				return `${name}: ${s.percentage}%`
+																			}).join(' • ')}
+																		</div>
+																	)}
 					</div>
 
 					<div>

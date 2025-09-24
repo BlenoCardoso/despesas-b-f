@@ -62,6 +62,11 @@ export function ExportButton({ householdId }: ExportButtonProps) {
     }
   })
 
+  const handleSubmitAdapter = async (values: ExportFormValues) => {
+    // forward to mutate function expected shape
+    await exportExpenses(values as any)
+  }
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -77,7 +82,7 @@ export function ExportButton({ householdId }: ExportButtonProps) {
 
         <div className="mt-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(exportExpenses)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(handleSubmitAdapter)} className="space-y-6">
               {/* Formato */}
               <FormField
                 control={form.control}

@@ -51,19 +51,21 @@ export class TaskService {
    * Update an existing task
    */
   async updateTask(id: string, data: Partial<TaskFormData>): Promise<void> {
+    const { attachments: newFiles, ...dataRest } = data as Partial<TaskFormData> & { attachments?: File[] }
+
     const updates: Partial<Task> = {
-      ...data,
+      ...dataRest as Partial<Task>,
       updatedAt: new Date(),
       syncVersion: Date.now(),
     }
 
     // Handle new attachments
-    if (data.attachments && data.attachments.length > 0) {
+    if (newFiles && newFiles.length > 0) {
       const currentTask = await db.tasks.get(id)
       if (currentTask) {
-        const newAttachments = [...currentTask.attachments]
+        const newAttachments = [...(currentTask.attachments || [])]
         
-        for (const file of data.attachments) {
+        for (const file of newFiles) {
           const attachmentId = generateId()
           await db.storeBlob(attachmentId, file, file.type)
           

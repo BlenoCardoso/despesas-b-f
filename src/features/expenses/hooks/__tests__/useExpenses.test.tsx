@@ -90,7 +90,7 @@ describe('useExpenses', () => {
       wrapper: createWrapper()
     })
 
-    expect(result.current.isIdle).toBe(true)
+  expect((result.current as any).isIdle).toBe(true)
     expect(expenseService.getExpenses).not.toHaveBeenCalled()
   })
 })

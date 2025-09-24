@@ -21,8 +21,8 @@ export default function ManageExpense() {
   ]
 
   // State for filters
-  const [selectedMonth, setSelectedMonth] = useState<string>()
-  const [selectedCategory, setSelectedCategory] = useState<string>()
+  const [selectedMonth, _setSelectedMonth] = useState<string>()
+  const [selectedCategory, _setSelectedCategory] = useState<string>()
 
   // Handle expense actions
   const handleEditExpense = (expense: FlexibleExpense) => {

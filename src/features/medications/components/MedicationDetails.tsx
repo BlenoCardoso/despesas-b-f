@@ -3,7 +3,6 @@ import { X, Pill, Clock, User, Calendar, Package, Plus, AlertTriangle, History, 
 import { Medication } from '../types'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { IntakeHistory } from './IntakeHistory'
 import { TreatmentProgress } from './TreatmentProgress'
 import { MedicationActions } from './MedicationActions'
 import { MedicationHistory } from './MedicationHistory'

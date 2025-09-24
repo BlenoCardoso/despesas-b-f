@@ -72,7 +72,7 @@ export function useCamera() {
         ...options
       }
 
-      const photo = await Camera.getPhoto(defaultOptions)
+  const photo = await Camera.getPhoto(defaultOptions as any)
       return photo
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao capturar foto'
@@ -97,7 +97,7 @@ export function useCamera() {
         ...options
       }
 
-      const photo = await Camera.getPhoto(defaultOptions)
+  const photo = await Camera.getPhoto(defaultOptions as any)
       return photo
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao selecionar foto'

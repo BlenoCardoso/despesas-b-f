@@ -34,8 +34,8 @@ export function SmartExpenseInput({ onSubmit, categories, isLoading }: SmartExpe
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
-  // Feature flag desativa anexos
-  const attachments: AttachmentFile[] = []
+  // Feature flag desativa anexos — manage via state so setAttachments is available
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([])
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()

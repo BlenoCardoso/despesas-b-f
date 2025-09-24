@@ -30,7 +30,7 @@ export interface MedicationIntake {
   status: 'pending' | 'taken' | 'skipped' | 'missed'
   dosageTaken: number
   note?: string
-  medication: Medication
+  medication?: Medication
 }
 
 export interface Medication extends BaseEntity {
@@ -42,14 +42,23 @@ export interface Medication extends BaseEntity {
   times: string[]
   startDate: Date
   endDate?: Date
+  instructions?: string
   // Backwards-compatible stock fields
   stockQuantity: number
   lowStockThreshold: number
   currentStock?: number
   prescribedBy?: string
+  pharmacy?: string
   description?: string
   isActive: boolean
   tags?: string[]
+  // Optional extra fields referenced in services/UI
+  cost?: number
+  notes?: string
+  sideEffects?: string[]
+  indications?: string[]
+  reminders?: any[]
+  syncVersion?: number
 }
 
 export interface MedicationFormData {
@@ -66,6 +75,13 @@ export interface MedicationFormData {
   prescribedBy?: string
   description?: string
   isActive: boolean
+  // optional fields sometimes present in UI forms
+  instructions?: string
+  sideEffects?: string[]
+  pharmacy?: string
+  cost?: number
+  reminders?: any[]
+  tags?: string[]
 }
 
 export interface MedicationReminder {
@@ -171,6 +187,10 @@ export interface MedicationFilter {
   hasStock?: boolean
   lowStock?: boolean
   activeOnly?: boolean
+  isActive?: boolean
+  isLowStock?: boolean
+  prescribedBy?: string[]
+  tags?: string[]
 }
 
 export type MedicationSortBy = 

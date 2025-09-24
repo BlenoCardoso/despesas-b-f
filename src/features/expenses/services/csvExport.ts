@@ -1,5 +1,4 @@
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import { formatCurrency } from '@/utils/format'
 
 interface Member {

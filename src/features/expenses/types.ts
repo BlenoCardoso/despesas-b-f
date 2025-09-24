@@ -43,9 +43,9 @@ export interface ExpenseFormData {
       amount?: number
     }>
     visibility?: 'personal' | 'shared'
+  }
   // Free-text tags entered as an array of strings
   tags?: string[]
-  }
 }
 
 export interface ExpenseFilter {

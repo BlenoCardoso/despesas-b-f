@@ -2,7 +2,7 @@
 import type { Expense as FirebaseExpense } from '../types/firebase-schema';
 import type { Expense as LocalExpense } from '../features/expenses/types';
 
-export function mapFirebaseToLocalExpense(firebaseExpense: FirebaseExpense): LocalExpense {
+export function mapFirebaseToLocalExpense(firebaseExpense: FirebaseExpense): any {
   return {
     id: firebaseExpense.id,
     householdId: firebaseExpense.householdId,
@@ -19,10 +19,10 @@ export function mapFirebaseToLocalExpense(firebaseExpense: FirebaseExpense): Loc
     updatedAt: firebaseExpense.updatedAt || firebaseExpense.createdAt,
     deletedAt: firebaseExpense.deletedAt,
     syncVersion: firebaseExpense.syncVersion
-  } as LocalExpense;
+  } as any
 }
 
-export function mapLocalToFirebaseExpense(localExpense: Partial<LocalExpense>, householdId: string, userId: string): Omit<FirebaseExpense, 'id' | 'createdAt' | 'syncVersion'> {
+export function mapLocalToFirebaseExpense(localExpense: Partial<LocalExpense>, householdId: string, userId: string): any {
   return {
     householdId,
     amount: localExpense.amount || 0,

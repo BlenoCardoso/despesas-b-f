@@ -30,7 +30,7 @@ const useVirtualList = () => {
     let mounted = true
     import('react-window')
       .then(mod => {
-        if (mounted) setListComp(() => mod.FixedSizeList)
+        if (mounted) setListComp(() => (mod as any).FixedSizeList || (mod as any).default || (mod as any))
       })
       .catch(err => {
         // optional: log for debugging
@@ -73,14 +73,17 @@ interface ExpenseListProps {
   categoryId?: string
   memberId?: string
   categories: Array<{ id: string; name: string; icon: string; color: string }>
-  onEdit?: (expense: FlexibleExpense) => void
-  onDuplicate?: (expense: FlexibleExpense) => void
-  onDelete?: (expense: FlexibleExpense) => void
-  onViewAttachments?: (expense: FlexibleExpense) => void
+  onEdit?: (expense: any) => void
+  onDuplicate?: (expense: any) => void
+  onDelete?: (expense: any) => void
+  onViewAttachments?: (expense: any) => void
   onCreate?: () => void
   activeFilters?: string[]
   searchText?: string
   filter?: any
+  expenses?: FlexibleExpense[] // Added this line to define the correct prop name
+  isLoading?: boolean
+  emptyMessage?: string
 }
 
 export function ExpenseList({
@@ -135,7 +138,7 @@ export function ExpenseList({
 
     const pages: any[] = Array.isArray((data as any).pages) ? (data as any).pages : []
     pages.forEach((page: any) => {
-      (page.items || []).forEach((expense: any) => {
+      (page.expenses || []).forEach((expense: any) => { // Changed 'items' to 'expenses'
         try {
           // Parse date string to Date object
           const expenseDate = parseISO(expense.date)

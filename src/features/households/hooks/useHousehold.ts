@@ -21,7 +21,7 @@ export function useHousehold(householdId?: string) {
         const household = await DatabaseMiddleware.get({
           collection: 'households',
           id: householdId
-        }) as Household
+        }) as unknown as Household
 
         setData(household)
         setError(null)

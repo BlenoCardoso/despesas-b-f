@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { ATTACHMENTS_ENABLED } from '../../../config/features'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import { Badge as _Badge } from '@/components/ui/badge'
 import {
   Sheet,
   SheetContent,
@@ -22,9 +22,9 @@ import {
   Plus,
   Search,
   Filter,
-  MoreVertical,
-  TrendingUp,
-  X,
+  MoreVertical as _MoreVertical,
+  TrendingUp as _TrendingUp,
+  X as _X,
   FilterX
 } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -58,11 +58,11 @@ export function ExpensesPage() {
   const [pageError, setPageError] = useState<string | null>(null)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
 
-  const navigate = useNavigate()
-  const exportReport = useExportReport()
+  const _navigate = useNavigate()
+  const _exportReport = useExportReport()
 
   // Firebase hooks
-  const { currentHousehold, loading: householdLoading } = useFirebaseHousehold()
+  const { currentHousehold, loading: _householdLoading } = useFirebaseHousehold()
   const { user } = useAuth()
   const fixedHouseholdId = currentHousehold?.id || '84d0cc61-1d5b-4cc6-8514-6388ce351bd8'
   
@@ -364,6 +364,7 @@ export function ExpensesPage() {
 
         {/* Expense List */}
         <ExpenseList
+          householdId={fixedHouseholdId}
           expenses={filteredExpenses as any}
           categories={categories}
           onEdit={handleEditExpense}

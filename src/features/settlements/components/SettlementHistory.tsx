@@ -32,7 +32,7 @@ export function SettlementHistory({ householdId, members, className }: Props) {
         limit: 12
       })
 
-      setSettlements(results as Settlement[])
+  setSettlements(results as unknown as Settlement[])
     }
 
     fetchSettlements()

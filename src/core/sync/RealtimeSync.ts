@@ -26,8 +26,7 @@ class BrowserEventEmitter {
       this.off(event, wrapper)
       cb(...args)
     }
-    // @ts-expect-error allow function typing
-    return this.on(event, wrapper)
+  return this.on(event, wrapper)
   }
 
   emit(event: string, ...args: any[]) {
