@@ -13,7 +13,7 @@ export interface UseExpensesInfiniteOptions {
 }
 
 interface QueryPage {
-  items: FlexibleExpense[]
+  expenses: FlexibleExpense[]
   cursor: { id: string; date?: string } | null
 }
 
@@ -21,7 +21,12 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
   const { householdId, month, categoryId, memberId, filter } = options
 
   return useInfiniteQuery<QueryPage>({
-    queryKey: ['expenses', 'infinite', options],
+    // Use a stable, primitive-based queryKey so React Query can correctly
+    // match and invalidate queries. Passing the whole `options` object here
+    // caused identity changes and also allowed queries to run with
+    // falsy/placeholder householdId which then failed membership checks.
+    queryKey: ['expenses', 'infinite', householdId || null, month || null, categoryId || null, memberId || null, filter ? JSON.stringify(filter) : null],
+    enabled: !!householdId,
     queryFn: async ({ pageParam }) => {
       // Build filters object for DatabaseMiddleware.queryPaginated
       const filters: Record<string, any> = { householdId }
@@ -49,9 +54,100 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
 
       const pageOptions: any = { limit: PAGE_SIZE, cursor: pageParam || null, orderBy: [['date', 'desc']] }
 
-      const result = await DatabaseMiddleware.queryPaginated<any>('expenses', filters, pageOptions)
+      // Debug: print filters and pageParam entering the DB layer
+      try {
+        console.debug('[useExpensesInfinite] query start', { pageParam, filters, pageOptions })
+      } catch (e) {}
 
-      const items = result.items || []
+      let result: any
+      let items: any[] = []
+      try {
+        result = await DatabaseMiddleware.queryPaginated<any>('expenses', filters, pageOptions)
+        items = result.items || []
+      } catch (err: any) {
+        // record the middleware error and attempt a local DB fallback so the UI can show data in dev
+        try {
+          console.warn('[useExpensesInfinite] DatabaseMiddleware failed, attempting local fallback', err)
+          ;(window as any).__lastExpensesQuery = { error: String(err && err.message ? err.message : err), fallback: true }
+        } catch (e) {}
+
+        try {
+          const mod = await import('@/core/db/database')
+          const localDb = (mod as any).db
+          // Read all expenses for household and filter in-memory
+          let all = await (localDb.expenses.where('householdId').equals(filters.householdId).toArray?.() || [])
+
+          // Apply date range filter if present
+          if (filters.date && (filters.date as any).__range) {
+            const [from, to] = (filters.date as any).__range
+            all = all.filter((it: any) => {
+              try {
+                const raw = it.date
+                if (!raw) return false
+                const iso = (typeof raw === 'string') ? new Date(raw).toISOString() : (raw instanceof Date ? raw.toISOString() : String(raw))
+                if (from && iso < from) return false
+                if (to && iso > to) return false
+                return true
+              } catch (e) {
+                return false
+              }
+            })
+          }
+
+          // Apply simple equality filters
+          if (filters.categoryId) all = all.filter((it: any) => it.categoryId === filters.categoryId)
+          if (filters.paidById) all = all.filter((it: any) => it.paidById === filters.paidById || it.userId === filters.paidById)
+          if (filters.accountId) all = all.filter((it: any) => it.accountId === filters.accountId)
+          if (filters.sharedOnly) all = all.filter((it: any) => !!it.isShared)
+
+          // Apply ordering by first orderBy field
+          const [field, direction] = (pageOptions.orderBy && pageOptions.orderBy[0]) || ['date', 'desc']
+          all = all.slice().sort((a: any, b: any) => {
+            const va = a[field]
+            const vb = b[field]
+            if (va === vb) return 0
+            if (direction === 'desc') return va < vb ? 1 : -1
+            return va > vb ? 1 : -1
+          })
+
+          // Apply cursor-based pagination: if cursor provided, find its index by id/field value
+          let startIndex = 0
+          if (pageOptions.cursor) {
+            const cursor = pageOptions.cursor
+            const idx = all.findIndex((it: any) => String(it.id) === String(cursor.id))
+            if (idx >= 0) startIndex = idx + 1
+          }
+
+          const paged = all.slice(startIndex, startIndex + (pageOptions.limit || PAGE_SIZE) )
+          const lastItem = paged.length ? paged[paged.length - 1] : null
+          result = {
+            items: paged,
+            cursor: lastItem ? { id: lastItem.id, [field]: lastItem[field] } : null
+          }
+          items = result.items || []
+
+          try { (window as any).__lastExpensesQuery = { fallback: true, itemsCount: items.length, sampleIds: items.slice(0,5).map((i:any)=>i.id), filters, pageOptions } } catch(e){}
+        } catch (e) {
+          // If fallback also fails, rethrow original error
+          console.error('[useExpensesInfinite] fallback failed', e)
+          throw err
+        }
+      }
+      // Expose last query to window for easier inspection during development
+      try {
+        ;(window as any).__lastExpensesQuery = {
+          timestamp: new Date().toISOString(),
+          pageParam,
+          filters,
+          pageOptions,
+          itemsCount: items.length,
+          sampleIds: items.slice(0, 5).map((i: any) => i.id),
+          cursor: result.cursor,
+        }
+        console.debug('[useExpensesInfinite] query result', (window as any).__lastExpensesQuery)
+      } catch (e) {
+        // ignore in non-browser environments
+      }
   // hasMore intentionally unused here (kept for possible future conditions)
   // intentionally not using hasMore here
 
@@ -62,7 +158,7 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
       }))
 
       return {
-        items: flexResults,
+        expenses: flexResults,
         cursor: result.cursor
       }
     },

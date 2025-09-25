@@ -13,10 +13,12 @@ import { ExpenseFormData } from '../types'
 import { useQueryClient } from '@tanstack/react-query'
 import { subMonths, addMonths, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useMonthlyExpenses } from '../hooks/useExpenses'
+import { useMonthlyExpenses, expenseKeys } from '../hooks/useExpenses'
 import { formatCurrency } from '@/utils/formatters'
 import { accountService } from '@/features/accounts/services/accountService'
 import { useEffect as useReactEffect } from 'react'
+import { useAppStore } from '@/core/store'
+import DebugPanel from '../components/DebugPanel'
 
 export function ExpensesPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -34,7 +36,8 @@ export function ExpensesPage() {
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = authService.getCurrentUser()
-  const householdIdForList = currentUser?.households?.[0] || 'default-household'
+  const { currentHousehold } = useAppStore()
+  const householdIdForList = currentHousehold?.id || currentUser?.households?.[0] || 'default-household'
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
   const [members, setMembers] = useState<Array<{ id: string; name: string }>>([])
   const [selectedAccount, setSelectedAccount] = useState<string | undefined>(undefined)
@@ -78,7 +81,7 @@ export function ExpensesPage() {
       if (entry.filters.accountId) setSelectedAccount(entry.filters.accountId)
       if (entry.filters.participantIds) setSelectedParticipants(entry.filters.participantIds)
       // Invalidate Query to refresh
-      queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
+  queryClient.invalidateQueries({ queryKey: expenseKeys.all })
     }
   }
 
@@ -142,7 +145,8 @@ export function ExpensesPage() {
         return
       }
 
-      const householdId = user.households?.[0] || 'default-household'
+      // Prefer household selected in app store so list and create/duplicate use same household
+      const householdId = householdIdForList || (user.households?.[0] || 'default-household')
       
       // Create a duplicate with new ID and current date
       const duplicateData: ExpenseFormData = {
@@ -158,11 +162,56 @@ export function ExpensesPage() {
       
       console.log('✅ Expense duplicated successfully:', duplicatedExpense.id)
       toast.success('Despesa duplicada com sucesso!')
-      
-      // Refresh the list
-      queryClient.invalidateQueries({
-        queryKey: ['expenses', 'infinite']
-      })
+
+      // DEBUG TOAST: mostrar householdId e data gravada para a duplicata (temporário)
+      try {
+        const dupDate = duplicatedExpense?.date ? (new Date(duplicatedExpense.date)).toISOString().slice(0,10) : (duplicatedExpense?.createdAt ? (new Date(duplicatedExpense.createdAt)).toISOString().slice(0,10) : 'n/a')
+        toast(`DEBUG DUP: household=${householdId}, date=${dupDate}`)
+      } catch (e) {}
+
+      // Optimistic cache update for duplicated expense
+      try {
+        queryClient.setQueriesData({ queryKey: expenseKeys.lists() }, (old: any) => {
+          if (!old) return old
+          try {
+            if (Array.isArray(old)) return [duplicatedExpense, ...old]
+            if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+              return { ...old, data: [duplicatedExpense, ...((old as any).data || [])] }
+            }
+          } catch (e) {}
+          return old
+        })
+
+        queryClient.setQueryData(expenseKeys.monthly(householdIdForList, selectedMonth), (old: any) => {
+          if (!old) return old
+          try {
+            if (Array.isArray(old)) return [duplicatedExpense, ...old]
+            if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+              return { ...old, data: [duplicatedExpense, ...((old as any).data || [])] }
+            }
+          } catch (e) {}
+          return old
+        })
+
+        // Also update the global expenses cache
+        try {
+          queryClient.setQueryData(expenseKeys.all, (old: any) => {
+            if (!old) return [duplicatedExpense]
+            try {
+              if (Array.isArray(old)) return [duplicatedExpense, ...old]
+              if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+                return { ...old, data: [duplicatedExpense, ...((old as any).data || [])] }
+              }
+            } catch (e) {}
+            return old
+          })
+        } catch (e) {
+          // ignore
+        }
+      } catch (e) {
+        // fallback to invalidation if optimistic update cannot be applied
+        queryClient.invalidateQueries({ queryKey: expenseKeys.all })
+      }
     } catch (error) {
       console.error('❌ Error duplicating expense:', error)
       toast.error('Erro ao duplicar despesa. Tente novamente.')
@@ -192,7 +241,7 @@ export function ExpensesPage() {
           }
         })
 
-        queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
+  queryClient.invalidateQueries({ queryKey: expenseKeys.all })
       })
     } catch (error) {
       console.error('❌ Error deleting expense:', error)
@@ -235,8 +284,8 @@ export function ExpensesPage() {
           return
         }
 
-        // For now, use a default household ID or the user's first household
-        const householdId = user.households?.[0] || 'default-household'
+        // Prefer household selected in app store so list and create/duplicate use same household
+        const householdId = householdIdForList || (user.households?.[0] || 'default-household')
         console.log('🏠 Using householdId:', householdId)
         
         // Create the expense
@@ -244,6 +293,110 @@ export function ExpensesPage() {
         
         console.log('✅ Expense created successfully:', expense.id)
         toast.success('Despesa criada com sucesso!')
+
+        // DEBUG TOAST: mostrar householdId e data gravada (temporário)
+        try {
+          const savedDate = expense?.date ? (new Date(expense.date)).toISOString().slice(0,10) : (expense?.createdAt ? (new Date(expense.createdAt)).toISOString().slice(0,10) : 'n/a')
+          toast(`DEBUG: household=${householdId}, date=${savedDate}`)
+        } catch (e) {
+          // ignore
+        }
+
+        // DEV DIAGNOSTIC: query Dexie to confirm saved records and membership (short summary)
+        try {
+          ;(async () => {
+            try {
+              const dbMod = await import('@/core/db/database')
+              const localDb = (dbMod as any).db
+              const localUser = await localDb.getCurrentUser?.()
+              const hhMembers = await localDb.householdMembers.where('householdId').equals(householdId).toArray().catch(() => [])
+              const isMember = typeof localDb.isHouseholdMember === 'function' ? await localDb.isHouseholdMember(householdId, localUser?.id) : (hhMembers.some((m: any) => m.userId === localUser?.id))
+              const allExpenses = await localDb.expenses.where('householdId').equals(householdId).toArray().catch(() => [])
+              const activeExpenses = await localDb.expenses.where('householdId').equals(householdId).and((e: any) => !e.deletedAt).toArray().catch(() => [])
+              console.log('DEV DEBUG: localUser, isMember, hhMembers, activeExpenses', { localUser, isMember, hhMembers, activeExpenses })
+              try {
+                toast(`DBG2: user=${localUser?.id||localUser?.uid||'n/a'}, member=${isMember? 'yes':'no'}, hhMembers=${hhMembers.length}, activeExpenses=${activeExpenses.length}, first=${activeExpenses[0]?.id||'none'}`)
+              } catch (e) {
+                // ignore toast errors
+              }
+                    // If no household members are present, auto-add the current user as a member (dev/local fallback)
+                    try {
+                      if ((hhMembers || []).length === 0 && localUser) {
+                        // Only run this on local dev hosts to avoid surprising production writes
+                        const host = typeof window !== 'undefined' ? window.location.hostname : ''
+                        if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.') || host === '') {
+                          try {
+                            const exists = await localDb.householdMembers.where('householdId').equals(householdId).and((m: any) => m.userId === localUser.id).first().catch(() => null)
+                            if (!exists) {
+                              await localDb.householdMembers.add({ householdId, userId: localUser.id, role: 'owner', joinedAt: new Date().toISOString() })
+                              console.log('DEV AUTO: added household member for local user', localUser.id)
+                              toast('DBG: added local household member (dev)')
+                              // invalidate queries so the list can refetch with membership in place
+                              try { queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] }) } catch (e) {}
+                              try { queryClient.invalidateQueries({ queryKey: expenseKeys.lists() }) } catch (e) {}
+                            }
+                          } catch (e) {
+                            // ignore
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      // ignore
+                    }
+            } catch (e) {
+              console.warn('DEV DEBUG inner failed', e)
+            }
+          })()
+        } catch (e) {
+          // ignore
+        }
+
+        // Optimistic cache update: add created expense to queries so UI shows it immediately
+        try {
+          // update any list caches
+          queryClient.setQueriesData({ queryKey: expenseKeys.lists() }, (old: any) => {
+            if (!old) return old
+            try {
+              if (Array.isArray(old)) return [expense, ...old]
+              if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+                return { ...old, data: [expense, ...((old as any).data || [])] }
+              }
+            } catch (e) {
+              // ignore
+            }
+            return old
+          })
+
+          // update monthly cache for the currently selected month
+          queryClient.setQueryData(expenseKeys.monthly(householdIdForList, selectedMonth), (old: any) => {
+            if (!old) return old
+            try {
+              if (Array.isArray(old)) return [expense, ...old]
+              if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+                return { ...old, data: [expense, ...((old as any).data || [])] }
+              }
+            } catch (e) {}
+            return old
+          })
+
+          // Also update the global expenses cache so UI hooks reading expenseKeys.all get the new item
+          try {
+            queryClient.setQueryData(expenseKeys.all, (old: any) => {
+              if (!old) return [expense]
+              try {
+                if (Array.isArray(old)) return [expense, ...old]
+                if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+                  return { ...old, data: [expense, ...((old as any).data || [])] }
+                }
+              } catch (e) {}
+              return old
+            })
+          } catch (e) {
+            // ignore
+          }
+        } catch (e) {
+          console.warn('Failed to optimistically update expense cache', e)
+        }
 
         // If we're offline, show a clearer offline-saving message
         try {
@@ -259,12 +412,20 @@ export function ExpensesPage() {
       }
       
       setShowExpenseForm(false)
-      
-      // Invalidate queries to refresh the expense list
-      console.log('🔄 Invalidating queries...')
-      queryClient.invalidateQueries({
-        queryKey: ['expenses', 'infinite']
-      })
+
+      // Invalidate & refetch all expense-related queries to ensure the list updates
+      // Use a single, broad invalidate + refetch for the 'expenses' root key so we
+      // don't miss queries keyed with different argument shapes (infinite, monthly, lists...)
+      try {
+        console.log('🔄 Invalidating and refetching expense queries...')
+        // Invalidate (mark stale)
+        await queryClient.invalidateQueries({ queryKey: ['expenses'], exact: false })
+        // Immediately trigger refetch for any matching queries so UI updates without a full reload
+        await queryClient.refetchQueries({ queryKey: ['expenses'], exact: false })
+        console.log('🔁 Refetch completo')
+      } catch (e) {
+        console.warn('Falha ao invalidar/refetchar queries de despesas', e)
+      }
     } catch (error) {
       console.error('Error processing expense:', error)
       const action = editingExpense ? 'atualizar' : 'criar'
@@ -519,6 +680,16 @@ export function ExpensesPage() {
           </div>
         </div>
       )}
+
+      {/* Debug panel (dev only) */}
+      <DebugPanel householdId={householdIdForList} onForceRefresh={async () => {
+        try {
+          await queryClient.invalidateQueries({ queryKey: ['expenses'], exact: false })
+          await queryClient.refetchQueries({ queryKey: ['expenses'], exact: false })
+        } catch (e) {
+          console.warn('Debug force refresh failed', e)
+        }
+      }} />
     </main>
   )
 }

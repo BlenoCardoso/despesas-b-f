@@ -15,13 +15,13 @@ interface FiltersPanelProps {
 
 export default function FiltersPanel({ householdId, searchText, accountId, participantIds, onApply, onClear }: FiltersPanelProps) {
   const [localSearch, setLocalSearch] = useState(searchText || '')
-  const [localAccount, setLocalAccount] = useState(accountId || '')
+  const [localAccount, setLocalAccount] = useState(accountId ? String(accountId) : '__all__')
   const [localParticipants, setLocalParticipants] = useState<string[]>(participantIds || [])
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
 
   useEffect(() => {
     setLocalSearch(searchText || '')
-    setLocalAccount(accountId || '')
+    setLocalAccount(accountId ? String(accountId) : '__all__')
     setLocalParticipants(participantIds || [])
   }, [searchText, accountId, participantIds])
 
@@ -47,13 +47,13 @@ export default function FiltersPanel({ householdId, searchText, accountId, parti
 
         <div>
           <label className="text-sm text-muted-foreground block mb-1">Conta</label>
-          <Select onValueChange={v => setLocalAccount(v)} defaultValue={localAccount}>
+          <Select onValueChange={v => setLocalAccount(v)} value={localAccount}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todas</SelectItem>
-              {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+              <SelectItem value="__all__">Todas</SelectItem>
+              {accounts.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -68,8 +68,8 @@ export default function FiltersPanel({ householdId, searchText, accountId, parti
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={() => onApply({ searchText: localSearch || undefined, accountId: localAccount || undefined, participantIds: localParticipants && localParticipants.length > 0 ? localParticipants : undefined })}>Aplicar</Button>
-          <Button variant="ghost" onClick={() => { setLocalSearch(''); setLocalAccount(''); setLocalParticipants([]); onClear() }}>Limpar</Button>
+          <Button onClick={() => onApply({ searchText: localSearch || undefined, accountId: localAccount === '__all__' ? undefined : localAccount, participantIds: localParticipants && localParticipants.length > 0 ? localParticipants : undefined })}>Aplicar</Button>
+          <Button variant="ghost" onClick={() => { setLocalSearch(''); setLocalAccount('__all__'); setLocalParticipants([]); onClear() }}>Limpar</Button>
         </div>
       </div>
     </div>
