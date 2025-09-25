@@ -665,6 +665,7 @@ export function ExpensesPage() {
             }
             <ExpenseList
               householdId={householdIdForList}
+              month={format(selectedMonth, 'yyyy-MM')}
               categories={categories}
               onEdit={handleEditExpense}
               onDuplicate={handleDuplicateExpense}
