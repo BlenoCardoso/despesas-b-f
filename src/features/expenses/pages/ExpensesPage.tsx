@@ -18,6 +18,7 @@ import { formatCurrency } from '@/utils/formatters'
 import { accountService } from '@/features/accounts/services/accountService'
 import { useEffect as useReactEffect } from 'react'
 import { useAppStore } from '@/core/store'
+// DebugPanel registers a hidden dev API on window.__expenses_debug and renders no UI
 import DebugPanel from '../components/DebugPanel'
 
 export function ExpensesPage() {
