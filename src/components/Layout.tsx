@@ -411,10 +411,17 @@ export function Layout() {
               aria-label="Abrir menu"
               className="fixed left-4 bottom-5 z-50 h-12 w-12 rounded-full bg-white shadow-md flex items-center justify-center focus-visible"
               onClick={() => {
-                console.debug('[Layout] global floating hamburger clicked - forcing mobile sidebar')
-                setForceMobileSidebarVisible(true)
-                setIsMobileSidebarOpen(true)
-                window.setTimeout(() => setForceMobileSidebarVisible(false), 6000)
+                // Toggle the mobile sidebar: if open, close it; otherwise open it (with forced visibility)
+                if (isMobileSidebarOpen || forceMobileSidebarVisible) {
+                  console.debug('[Layout] global floating hamburger clicked - closing mobile sidebar')
+                  setForceMobileSidebarVisible(false)
+                  setIsMobileSidebarOpen(false)
+                } else {
+                  console.debug('[Layout] global floating hamburger clicked - forcing mobile sidebar')
+                  setForceMobileSidebarVisible(true)
+                  setIsMobileSidebarOpen(true)
+                  window.setTimeout(() => setForceMobileSidebarVisible(false), 6000)
+                }
               }}
             >
               <svg className="h-6 w-6 text-gray-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

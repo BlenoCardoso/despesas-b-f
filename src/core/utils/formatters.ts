@@ -17,8 +17,24 @@ export function formatCurrency(amount: number, currency: string = 'BRL'): string
  * Parse currency string to number
  */
 export function parseCurrency(value: string): number {
-  // Remove currency symbols and convert to number
-  const cleaned = value.replace(/[^\d,-]/g, '').replace(',', '.')
+  if (!value) return 0
+
+  // Keep digits, comma and dot
+  const cleaned = String(value).replace(/[^\d.,-]/g, '').trim()
+
+  // If both dot and comma are present, assume dot is thousands separator and comma is decimal
+  if (cleaned.indexOf('.') !== -1 && cleaned.indexOf(',') !== -1) {
+    const removedThousands = cleaned.replace(/\./g, '')
+    const normalized = removedThousands.replace(',', '.')
+    return parseFloat(normalized) || 0
+  }
+
+  // If only comma is present, treat comma as decimal separator
+  if (cleaned.indexOf(',') !== -1 && cleaned.indexOf('.') === -1) {
+    return parseFloat(cleaned.replace(',', '.')) || 0
+  }
+
+  // Otherwise parse normally (handles strings like '1234.56' or '123456')
   return parseFloat(cleaned) || 0
 }
 

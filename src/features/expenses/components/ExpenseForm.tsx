@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { formatCurrency, formatDate, parseCurrency } from '@/core/utils/formatters'
 import {
 	Select,
@@ -93,8 +93,38 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 		onSuccess?.(data)
 	}
 
+	const amountInputRef = useRef<HTMLInputElement | null>(null)
+
 	const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setAmountInput(e.target.value)
+		const inputEl = amountInputRef.current
+		const newRaw = e.target.value
+		const oldValue = amountInput || ''
+		const caretPos = (inputEl && inputEl.selectionStart != null) ? inputEl.selectionStart : oldValue.length
+		const oldDistanceFromEnd = oldValue.length - caretPos
+
+		// extract digits only to treat as cents (allow pasted values with separators)
+		const digits = newRaw.replace(/\D/g, '')
+		if (!digits) {
+			setAmountInput('')
+			return
+		}
+
+		const cents = parseInt(digits, 10) || 0
+		const numeric = cents / 100
+		const formatted = formatCurrency(numeric)
+
+		setAmountInput(formatted)
+
+		// preserve caret relative to the end of the string
+		window.requestAnimationFrame(() => {
+			if (!amountInputRef.current) return
+			const pos = Math.max(0, Math.min(formatted.length, formatted.length - oldDistanceFromEnd))
+			try {
+				amountInputRef.current.setSelectionRange(pos, pos)
+			} catch (err) {
+				// ignore selection errors on some environments
+			}
+		})
 	}
 
 	const handleAmountBlur = () => {
@@ -103,8 +133,15 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 	}
 
 	const handleAmountFocus = () => {
+		// show a plain editable number (with comma decimal) when focusing for easier editing
 		const parsed = parseCurrency(amountInput)
 		setAmountInput(parsed ? parsed.toFixed(2).replace('.', ',') : '')
+
+		// move caret to end after switching to the editable representation
+		window.requestAnimationFrame(() => {
+			if (!amountInputRef.current) return
+			try { const len = amountInputRef.current.value.length; amountInputRef.current.setSelectionRange(len, len) } catch (e) { }
+		})
 	}
 
 	const handleTagsBlur = () => {
@@ -132,7 +169,17 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 
 				<div>
 					<label htmlFor="expense-amount" className="block text-sm font-medium mb-1">Valor</label>
-					<input id="expense-amount" aria-label="Valor" value={amountInput} onChange={handleAmountChange} onBlur={handleAmountBlur} onFocus={handleAmountFocus} className="w-full border rounded px-3 py-2 text-right" />
+					<input
+						id="expense-amount"
+						ref={amountInputRef}
+						aria-label="Valor"
+						placeholder="R$ 0,00"
+						value={amountInput}
+						onChange={handleAmountChange}
+						onBlur={handleAmountBlur}
+						onFocus={handleAmountFocus}
+						className="w-full border rounded px-3 py-2 text-right"
+					/>
 				</div>
 
 				<div>

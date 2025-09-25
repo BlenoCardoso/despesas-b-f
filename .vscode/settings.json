@@ -1,0 +1,24 @@
+{
+  "files.exclude": {
+    "node_modules/": true,
+    "www/": true,
+    "dist/": true,
+    "android/": true,
+    "build/": true,
+    "verbose/": true,
+    "**/*.apk": true
+  },
+  "search.exclude": {
+    "node_modules/": true,
+    "www/": true,
+    "dist/": true,
+    "android/": true,
+    "build/": true,
+    "verbose/": true,
+    "**/*.apk": true
+  },
+  "typescript.tsserver.maxTsServerMemory": 4096,
+  "typescript.tsserver.trace": "off",
+  "javascript.suggest.autoImports": true,
+  "editor.largeFileOptimizations": true
+}

@@ -34,6 +34,10 @@ export interface ExpenseFormData {
   attachments?: File[]
   recurrence?: Recurrence
   installment?: Installment
+  // Optional account/wallet id where the payment originated
+  accountId?: string
+  // Explicit payer (user id) when different from current user
+  paidById?: string
   // New fields to support flexible split
   split?: {
     mode: 'equal' | 'percentage' | 'exact'
@@ -46,6 +50,10 @@ export interface ExpenseFormData {
   }
   // Free-text tags entered as an array of strings
   tags?: string[]
+  // Convenience flag used by some UI to mark a shared expense
+  isShared?: boolean
+  // Explicit shares persisted on the expense (memberId + amount/percentage)
+  shares?: Array<{ memberId: string; percentage?: number; amount?: number }>
 }
 
 export interface ExpenseFilter {
@@ -62,6 +70,8 @@ export interface ExpenseFilter {
   participantIds?: string[]
   paymentStatus?: PaymentStatus | PaymentStatus[]
   tags?: string[]
+  // Filter to only include shared expenses
+  sharedOnly?: boolean
 }
 
 export interface ExpenseGroup {
