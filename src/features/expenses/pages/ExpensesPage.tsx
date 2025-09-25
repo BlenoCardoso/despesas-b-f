@@ -17,6 +17,14 @@ import { useMonthlyExpenses, expenseKeys } from '../hooks/useExpenses'
 import { formatCurrency } from '@/utils/formatters'
 import { accountService } from '@/features/accounts/services/accountService'
 import { useEffect as useReactEffect } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { useAppStore } from '@/core/store'
 // DebugPanel registers a hidden dev API on window.__expenses_debug and renders no UI
 import DebugPanel from '../components/DebugPanel'
@@ -35,6 +43,8 @@ export function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<any>(null)
   const [coupleMode, setCoupleMode] = useState<boolean>(false)
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
+  const [deleteCandidate, setDeleteCandidate] = useState<any>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = authService.getCurrentUser()
   const { currentHousehold } = useAppStore()
@@ -169,6 +179,13 @@ export function ExpensesPage() {
         const dupDate = duplicatedExpense?.date ? (new Date(duplicatedExpense.date)).toISOString().slice(0,10) : (duplicatedExpense?.createdAt ? (new Date(duplicatedExpense.createdAt)).toISOString().slice(0,10) : 'n/a')
         toast(`DEBUG DUP: household=${householdId}, date=${dupDate}`)
       } catch (e) {}
+      // Debug: dump matching queries data so we can inspect why UI didn't update
+      try {
+        const matching = queryClient.getQueriesData({ queryKey: expenseKeys.all, exact: false })
+        console.debug('[DELETE DEBUG] matching expense queries (key, data):', matching.map(([k, d]: any) => [k, Boolean(d) ? (Array.isArray(d) ? `array(${d.length})` : (d && typeof d === 'object' && d.pages ? `infinite pages=${d.pages.length}` : 'object')) : 'empty']))
+      } catch (e) {
+        console.warn('Failed to dump matching queries for debug', e)
+      }
 
       // Optimistic cache update for duplicated expense
       try {
@@ -221,32 +238,84 @@ export function ExpensesPage() {
 
   const handleDeleteExpense = async (expense: any) => {
     try {
-  console.log('🗑️ Deleting expense:', expense)
+      console.log('🗑️ Deleting expense (raw):', expense)
+      // Accept either an expense object or an id string
+      const expenseId = typeof expense === 'string' ? expense : (expense && (expense.id || expense._id || expense.uuid))
+      if (!expenseId) {
+        console.error('❌ Invalid expense id for delete:', expense)
+        toast.error('Erro: ID da despesa inválido. A exclusão não foi executada.')
+        return
+      }
 
   // Soft delete - use centralized service which supports undo cache
-      await serviceDeleteExpense(expense.id, () => {
+  await serviceDeleteExpense(expenseId, () => {
         // show undo toast using local toast wrapper
-        toast('Despesa removida — desfazer', {
-          action: {
-            label: 'Desfazer',
-            onClick: async () => {
-              try {
-                await undoExpenseDelete(expense.id)
-                toast.success('Despesa restaurada')
-                queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
-              } catch (err) {
-                console.error('Erro ao restaurar despesa', err)
-                toast.error('Erro ao restaurar despesa')
+        try {
+          toast('Despesa removida — desfazer', {
+            action: {
+              label: 'Desfazer',
+              onClick: async () => {
+                try {
+                  await undoExpenseDelete(expenseId)
+                  toast.success('Despesa restaurada')
+                  queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] })
+                } catch (err) {
+                  console.error('Erro ao restaurar despesa', err)
+                  toast.error('Erro ao restaurar despesa')
+                }
               }
             }
-          }
-        })
+          })
+        } catch (e) {
+          // ignore toast creation errors
+        }
 
-  queryClient.invalidateQueries({ queryKey: expenseKeys.all })
+        try {
+          // Invalidate broad 'expenses' namespace so lists/monthly/details refetch
+          queryClient.invalidateQueries({ queryKey: expenseKeys.all, exact: false })
+          // Also invalidate list and monthly caches explicitly
+          try { queryClient.invalidateQueries({ queryKey: expenseKeys.lists(), exact: false }) } catch (e) {}
+          try { queryClient.invalidateQueries({ queryKey: expenseKeys.monthly(householdIdForList, selectedMonth), exact: false }) } catch (e) {}
+          try { queryClient.invalidateQueries({ queryKey: expenseKeys.detail(expenseId), exact: false }) } catch (e) {}
+        } catch (e) {}
       })
+      // Optimistically remove expense from any cached lists so UI updates immediately
+      try {
+        // Update any queries under the 'expenses' namespace (including paginated infinite queries)
+        queryClient.setQueriesData({ queryKey: expenseKeys.all, exact: false }, (old: any) => {
+          if (!old) return old
+          try {
+            // react-query infinite query shape: { pages: [{ expenses: [...] , cursor }, ...], pageParams: [] }
+            if (old && typeof old === 'object' && Array.isArray(old.pages)) {
+              const newPages = old.pages.map((p: any) => {
+                if (p && Array.isArray(p.expenses)) {
+                  return { ...p, expenses: p.expenses.filter((it: any) => String(it.id) !== String(expenseId)) }
+                }
+                // fallback for pages that use items[] shape
+                if (p && Array.isArray(p.items)) {
+                  return { ...p, items: p.items.filter((it: any) => String(it.id) !== String(expenseId)) }
+                }
+                return p
+              })
+              return { ...old, pages: newPages }
+            }
+
+            // common list shape: array
+            if (Array.isArray(old)) return old.filter((x: any) => String(x.id) !== String(expenseId))
+
+            // common object with data array
+            if (old && typeof old === 'object' && Array.isArray((old as any).data)) {
+              return { ...old, data: (old as any).data.filter((x: any) => String(x.id) !== String(expenseId)) }
+            }
+          } catch (e) {
+            console.warn('Failed optimistic removal from cache', e)
+          }
+          return old
+        })
+      } catch (e) {}
     } catch (error) {
       console.error('❌ Error deleting expense:', error)
-      toast.error('Erro ao excluir despesa. Tente novamente.')
+      try { toast.error('Erro ao excluir despesa. Tente novamente.') } catch (e) {}
     }
   }
 
@@ -292,16 +361,10 @@ export function ExpensesPage() {
         // Create the expense
         const expense = await simpleExpenseService.createExpense(data, householdId, user.id)
         
-        console.log('✅ Expense created successfully:', expense.id)
-        toast.success('Despesa criada com sucesso!')
+  console.log('✅ Expense created successfully:', expense.id)
 
         // DEBUG TOAST: mostrar householdId e data gravada (temporário)
-        try {
-          const savedDate = expense?.date ? (new Date(expense.date)).toISOString().slice(0,10) : (expense?.createdAt ? (new Date(expense.createdAt)).toISOString().slice(0,10) : 'n/a')
-          toast(`DEBUG: household=${householdId}, date=${savedDate}`)
-        } catch (e) {
-          // ignore
-        }
+        // debug toast removed
 
         // DEV DIAGNOSTIC: query Dexie to confirm saved records and membership (short summary)
         try {
@@ -315,11 +378,7 @@ export function ExpensesPage() {
               const allExpenses = await localDb.expenses.where('householdId').equals(householdId).toArray().catch(() => [])
               const activeExpenses = await localDb.expenses.where('householdId').equals(householdId).and((e: any) => !e.deletedAt).toArray().catch(() => [])
               console.log('DEV DEBUG: localUser, isMember, hhMembers, activeExpenses', { localUser, isMember, hhMembers, activeExpenses })
-              try {
-                toast(`DBG2: user=${localUser?.id||localUser?.uid||'n/a'}, member=${isMember? 'yes':'no'}, hhMembers=${hhMembers.length}, activeExpenses=${activeExpenses.length}, first=${activeExpenses[0]?.id||'none'}`)
-              } catch (e) {
-                // ignore toast errors
-              }
+              // DBG2 toast removed
                     // If no household members are present, auto-add the current user as a member (dev/local fallback)
                     try {
                       if ((hhMembers || []).length === 0 && localUser) {
@@ -328,10 +387,9 @@ export function ExpensesPage() {
                         if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.') || host === '') {
                           try {
                             const exists = await localDb.householdMembers.where('householdId').equals(householdId).and((m: any) => m.userId === localUser.id).first().catch(() => null)
-                            if (!exists) {
+                              if (!exists) {
                               await localDb.householdMembers.add({ householdId, userId: localUser.id, role: 'owner', joinedAt: new Date().toISOString() })
                               console.log('DEV AUTO: added household member for local user', localUser.id)
-                              toast('DBG: added local household member (dev)')
                               // invalidate queries so the list can refetch with membership in place
                               try { queryClient.invalidateQueries({ queryKey: ['expenses', 'infinite'] }) } catch (e) {}
                               try { queryClient.invalidateQueries({ queryKey: expenseKeys.lists() }) } catch (e) {}
@@ -610,7 +668,11 @@ export function ExpensesPage() {
               categories={categories}
               onEdit={handleEditExpense}
               onDuplicate={handleDuplicateExpense}
-              onDelete={handleDeleteExpense}
+              onDelete={(e: any) => {
+                // Open confirmation dialog and store candidate
+                setDeleteCandidate(e)
+                setConfirmOpen(true)
+              }}
               onViewAttachments={handleViewAttachments}
               onCreate={() => setShowExpenseForm(true)}
                 activeFilters={activeFilters}
@@ -691,6 +753,32 @@ export function ExpensesPage() {
           console.warn('Debug force refresh failed', e)
         }
       }} />
+
+      {/* Confirm delete dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
+            <DialogDescription>Tem certeza que deseja excluir esta despesa? Esta ação pode ser desfeita apenas pelo botão 'Desfazer' na notificação.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex justify-end gap-3 mt-4">
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+              <Button onClick={async () => {
+                setConfirmOpen(false)
+                try {
+                  await handleDeleteExpense(deleteCandidate)
+                } catch (e) {
+                  // already handled
+                } finally {
+                  setDeleteCandidate(null)
+                }
+              }}>Excluir</Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }
