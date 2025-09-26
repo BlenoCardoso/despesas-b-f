@@ -7,6 +7,7 @@ import { ExpenseForm } from '../components/ExpenseForm'
 import FiltersPanel from '../components/FiltersPanel'
 import { toast } from 'sonner'
 import { deleteExpense as serviceDeleteExpense, undoExpenseDelete } from '../services/expense-service'
+import { db } from '@/lib/db'
 import { simpleExpenseService } from '../services/simpleExpenseService'
 import { authService } from '@/services/authService'
 import { ExpenseFormData } from '../types'
@@ -180,12 +181,7 @@ export function ExpensesPage() {
         toast(`DEBUG DUP: household=${householdId}, date=${dupDate}`)
       } catch (e) {}
       // Debug: dump matching queries data so we can inspect why UI didn't update
-      try {
-        const matching = queryClient.getQueriesData({ queryKey: expenseKeys.all, exact: false })
-        console.debug('[DELETE DEBUG] matching expense queries (key, data):', matching.map(([k, d]: any) => [k, Boolean(d) ? (Array.isArray(d) ? `array(${d.length})` : (d && typeof d === 'object' && d.pages ? `infinite pages=${d.pages.length}` : 'object')) : 'empty']))
-      } catch (e) {
-        console.warn('Failed to dump matching queries for debug', e)
-      }
+      // removed temporary debug dump
 
       // Optimistic cache update for duplicated expense
       try {
@@ -240,15 +236,50 @@ export function ExpensesPage() {
     try {
       console.log('🗑️ Deleting expense (raw):', expense)
       // Accept either an expense object or an id string
-      const expenseId = typeof expense === 'string' ? expense : (expense && (expense.id || expense._id || expense.uuid))
+      const expenseIdCandidate = typeof expense === 'string' ? expense : (expense && (expense.id || expense._id || expense.uuid))
+      let expenseId = expenseIdCandidate
+
+      // Ensure the id exists in the local DB; if not, try numeric coercion or matching by fields
+      try {
+        let found = undefined
+        if (expenseId) {
+          found = await db.expenses.get(expenseId)
+        }
+        if (!found && expenseId) {
+          // try numeric id
+          const num = Number(expenseId)
+          if (!Number.isNaN(num)) found = await db.expenses.get(num as any)
+        }
+        if (!found && expense && expense.title) {
+          // fallback: try to match by title + amount + date (best-effort)
+          const where = db.expenses.where('householdId').equals(householdIdForList)
+          const arr = await where.toArray()
+          found = arr.find((e: any) => {
+            try {
+              const sameTitle = String(e.title || '').trim() === String(expense.title || '').trim()
+              const sameAmount = Number(e.amount || 0) === Number(expense.amount || 0)
+              const eDate = e.date ? (new Date(e.date)).toISOString().slice(0,10) : ''
+              const cDate = expense.date ? (new Date(expense.date)).toISOString().slice(0,10) : ''
+              const sameDate = eDate && cDate ? eDate === cDate : true
+              return sameTitle && sameAmount && sameDate
+            } catch (e) {
+              return false
+            }
+          })
+        }
+
+        if (found && found.id) expenseId = found.id
+      } catch (e) {
+        // ignore DB lookup errors and proceed with candidate id
+      }
       if (!expenseId) {
         console.error('❌ Invalid expense id for delete:', expense)
         toast.error('Erro: ID da despesa inválido. A exclusão não foi executada.')
         return
       }
 
-  // Soft delete - use centralized service which supports undo cache
-  await serviceDeleteExpense(expenseId, () => {
+    // Soft delete - use centralized service which supports undo cache
+    await serviceDeleteExpense(expenseId, () => {
         // show undo toast using local toast wrapper
         try {
           toast('Despesa removida — desfazer', {
@@ -757,28 +788,40 @@ export function ExpensesPage() {
 
       {/* Confirm delete dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar exclusão</DialogTitle>
-            <DialogDescription>Tem certeza que deseja excluir esta despesa? Esta ação pode ser desfeita apenas pelo botão 'Desfazer' na notificação.</DialogDescription>
-          </DialogHeader>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirmar exclusão</DialogTitle>
+              <DialogDescription>
+                {deleteCandidate ? (
+                  <>
+                    Você irá excluir a despesa <strong>{deleteCandidate.title || deleteCandidate.description || deleteCandidate.name || '—'}</strong>
+                    {deleteCandidate.date ? (
+                      <span> — {format(new Date(deleteCandidate.date), 'dd/MM/yyyy')}</span>
+                    ) : null}
+                    . Esta ação pode ser desfeita apenas pelo botão 'Desfazer' na notificação.
+                  </>
+                ) : (
+                  'Tem certeza que deseja excluir esta despesa?'
+                )}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="flex justify-end gap-3 mt-4">
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
-              <Button onClick={async () => {
-                setConfirmOpen(false)
-                try {
-                  await handleDeleteExpense(deleteCandidate)
-                } catch (e) {
-                  // already handled
-                } finally {
-                  setDeleteCandidate(null)
-                }
-              }}>Excluir</Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
+            <div className="flex justify-end gap-3 mt-4">
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+                <Button onClick={async () => {
+                  setConfirmOpen(false)
+                  try {
+                    await handleDeleteExpense(deleteCandidate)
+                  } catch (e) {
+                    // already handled
+                  } finally {
+                    setDeleteCandidate(null)
+                  }
+                }}>Excluir</Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
       </Dialog>
     </main>
   )

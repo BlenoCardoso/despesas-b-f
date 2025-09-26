@@ -232,6 +232,9 @@ export class DatabaseMiddleware {
     // Build query
   // Use `any` here to avoid mixing Table and Collection types in this thin middleware.
   let collection: any = db.table(collectionName)
+
+  // Note: do not apply collection.filter() here — Dexie.transaction expects a Table or string.
+  // Soft-delete filtering will be applied inside the transaction where `collection` can be filtered safely.
     
     // If query is scoped to a household, validate membership before reading
     if (filters && typeof filters === 'object' && 'householdId' in filters) {
@@ -244,6 +247,17 @@ export class DatabaseMiddleware {
 
     // Start transaction
     const tx = db.transaction('r', collection, async () => {
+      // Apply a default exclusion for soft-deleted records for collections that support it
+      const collectionsWithSoftDelete = ['expenses', 'tasks', 'documents', 'medications', 'calendarEvents']
+      if (collectionsWithSoftDelete.includes(collectionName)) {
+        // convert to a filtered collection view by wrapping with .filter
+        try {
+          collection = collection.filter((item: any) => !item.deletedAt)
+        } catch (e) {
+          // ignore if filter isn't available in this runtime
+        }
+      }
+
       // Apply filters with compound where
       Object.entries(filters).forEach(([key, value]) => {
         // Support range queries expressed as { __range: [fromIso, toIso] }
@@ -313,23 +327,70 @@ export class DatabaseMiddleware {
 
       // Apply sorting - only first orderBy for now as compound sort isn't supported
       const [field, direction] = orderBy[0]
-      collection = direction === 'desc'
-        ? collection.orderBy(field).reverse()
-        : collection.orderBy(field)
 
-      // Apply cursor based pagination
-      if (cursor) {
-        const cursorDoc = await collection.get(cursor.id)
-        if (cursorDoc) {
-          const cursorValue = cursorDoc[field]
-          collection = direction === 'desc'
-            ? collection.filter((item: any) => item[field] < cursorValue)
-            : collection.filter((item: any) => item[field] > cursorValue)
+      // Some runtimes / filtered collection views may not expose Dexie's `orderBy`.
+      // In that case, fall back to converting the collection to an array and
+      // perform sorting/pagination in-memory to avoid "collection.orderBy is not a function".
+      let items: any[] = []
+      if (collection && typeof (collection as any).orderBy === 'function') {
+        // Dexie-backed path: use DB ordering and pagination
+        collection = direction === 'desc'
+          ? (collection as any).orderBy(field).reverse()
+          : (collection as any).orderBy(field)
+
+        // Apply cursor based pagination using DB lookups when available
+        if (cursor) {
+          const cursorDoc = await (collection as any).get(cursor.id)
+          if (cursorDoc) {
+            const cursorValue = cursorDoc[field]
+            collection = direction === 'desc'
+              ? (collection as any).filter((item: any) => item[field] < cursorValue)
+              : (collection as any).filter((item: any) => item[field] > cursorValue)
+          }
         }
-      }
 
-      // Apply limit and get results
-      const items = await collection.limit(limit + 1).toArray()
+        // Apply limit and get results from DB
+        items = await (collection as any).limit(limit + 1).toArray()
+      } else {
+        // Fallback path: convert whatever collection is into an array and sort in JS
+        try {
+          // If collection has toArray, use it; if it's already an array, use directly
+          if (typeof (collection as any).toArray === 'function') {
+            items = await (collection as any).toArray()
+          } else if (Array.isArray(collection)) {
+            items = collection as any[]
+          } else {
+            // As last resort, try to iterate via .each or coerce to empty
+            items = []
+          }
+        } catch (e) {
+          items = []
+        }
+
+        // Sort in-memory by the requested field
+        items.sort((a: any, b: any) => {
+          const av = a && a[field]
+          const bv = b && b[field]
+          if (av === bv) return 0
+          if (av == null) return 1
+          if (bv == null) return -1
+          if (av > bv) return direction === 'desc' ? -1 : 1
+          if (av < bv) return direction === 'desc' ? 1 : -1
+          return 0
+        })
+
+        // If cursor provided, find its position and slice accordingly
+        if (cursor) {
+          const idx = items.findIndex((it: any) => String(it.id) === String(cursor.id))
+          if (idx >= 0) {
+            // Start after the cursor item
+            items = items.slice(idx + 1)
+          }
+        }
+
+        // Respect limit + 1 semantics for pagination detection
+        items = items.slice(0, limit + 1)
+      }
 
       // Check if there are more items
       const hasMore = items.length > limit

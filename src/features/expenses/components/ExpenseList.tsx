@@ -137,18 +137,33 @@ export function ExpenseList({
     const groups: Record<string, ExpenseGroup> = {}
 
     const pages: any[] = Array.isArray((data as any).pages) ? (data as any).pages : []
+    // helper to safely convert various date shapes into a Date object
+    const toDate = (v: any) => {
+      try {
+        if (!v) return new Date(NaN)
+        if (v instanceof Date) return v
+        if (typeof v === 'string') return parseISO(v)
+        if (typeof v === 'number') return new Date(v)
+        // If object with toISOString (e.g., serialized Date) use that
+        if (v && typeof v.toISOString === 'function') return new Date(v.toISOString())
+        return new Date(String(v))
+      } catch (e) {
+        return new Date(NaN)
+      }
+    }
+
     pages.forEach((page: any) => {
       (page.expenses || []).forEach((expense: any) => { // Changed 'items' to 'expenses'
         try {
-          // Parse date string to Date object
-          const expenseDate = parseISO(expense.date)
-          
+          // Parse date safely to Date object
+          const expenseDate = toDate(expense.date)
+
           // Skip if date is invalid
           if (isNaN(expenseDate.getTime())) {
             console.warn('⚠️ Data inválida encontrada na despesa:', expense.id)
             return
           }
-          
+
           const dateKey = format(expenseDate, 'yyyy-MM-dd')
           const dateLabel = formatDateGroup(expenseDate)
 
