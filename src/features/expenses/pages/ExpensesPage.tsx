@@ -12,7 +12,7 @@ import { simpleExpenseService } from '../services/simpleExpenseService'
 import { authService } from '@/services/authService'
 import { ExpenseFormData } from '../types'
 import { useQueryClient } from '@tanstack/react-query'
-import { subMonths, addMonths, format } from 'date-fns'
+import { subMonths, addMonths, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useMonthlyExpenses, expenseKeys } from '../hooks/useExpenses'
 import { formatCurrency } from '@/utils/formatters'
@@ -709,13 +709,46 @@ export function ExpensesPage() {
               onCreate={() => setShowExpenseForm(true)}
                 activeFilters={activeFilters}
                 searchText={searchText}
-                filter={{
-                  accountId: selectedAccount,
-                  participantIds: selectedParticipants && selectedParticipants.length > 0 ? selectedParticipants : undefined,
-                  sharedOnly: activeFilters.includes('shared') ? true : undefined,
-                  searchText: searchText || undefined,
-                  paymentStatus: activeFilters.includes('paid') ? 'paid' : activeFilters.includes('pending') ? 'unpaid' : undefined,
-                } as any}
+                filter={(function() {
+                  const f: any = {
+                    accountId: selectedAccount,
+                    participantIds: selectedParticipants && selectedParticipants.length > 0 ? selectedParticipants : undefined,
+                    sharedOnly: activeFilters.includes('shared') ? true : undefined,
+                    personalOnly: activeFilters.includes('personal') ? true : undefined,
+                    searchText: searchText || undefined,
+                    paymentStatus: activeFilters.includes('paid') ? 'paid' : activeFilters.includes('pending') ? 'unpaid' : undefined,
+                  }
+
+                  // Map date chips into startDate/endDate when present
+                  const now = new Date()
+                  if (activeFilters.includes('today')) {
+                    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                    const e = new Date(s)
+                    e.setHours(23,59,59,999)
+                    f.startDate = s
+                    f.endDate = e
+                  } else if (activeFilters.includes('yesterday')) {
+                    const y = new Date(now)
+                    y.setDate(now.getDate() - 1)
+                    const s = new Date(y.getFullYear(), y.getMonth(), y.getDate())
+                    const e = new Date(s)
+                    e.setHours(23,59,59,999)
+                    f.startDate = s
+                    f.endDate = e
+                  } else if (activeFilters.includes('this_week')) {
+                    const s = startOfWeek(now)
+                    const e = endOfWeek(now)
+                    f.startDate = s
+                    f.endDate = e
+                  } else if (activeFilters.includes('this_month')) {
+                    const s = startOfMonth(now)
+                    const e = endOfMonth(now)
+                    f.startDate = s
+                    f.endDate = e
+                  }
+
+                  return f
+                })()}
             />
           </div>
 

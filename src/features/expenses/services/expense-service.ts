@@ -113,3 +113,45 @@ export async function undoExpenseDelete(expenseId: string) {
 
   return deleted.expense
 }
+
+/**
+ * Toggle payment status for an expense.
+ * If the expense is currently 'paid', set to 'unpaid' (or undefined).
+ * Otherwise set to 'paid'.
+ */
+export async function togglePaymentStatus(expenseId: string) {
+  const expense = await db.expenses.get(expenseId)
+  if (!expense) throw new Error('Expense not found')
+
+  const newStatus = ((expense.paymentStatus || 'unpaid') === 'paid') ? 'unpaid' : 'paid'
+  const updatedAt = new Date().toISOString()
+
+  try {
+    if (typeof (db.expenses as any).update === 'function') {
+      await db.expenses.update(expenseId, { paymentStatus: newStatus, updatedAt, version: ((expense.version || 0) + 1) })
+    } else if (typeof (db.expenses as any).put === 'function') {
+      await db.expenses.put({ ...(expense || {}), id: expenseId, paymentStatus: newStatus, updatedAt, version: ((expense.version || 0) + 1) } as any)
+    } else {
+      // fallback: try delete/insert not desirable; just throw
+      throw new Error('DB does not support update/put for payment toggle')
+    }
+
+    // enqueue sync so remote systems see the payment status change
+    try {
+      await enqueueSync({
+        type: 'update',
+        collection: 'expenses',
+        entityId: expenseId,
+        householdId: (expense as any).householdId,
+        payload: { id: expenseId, paymentStatus: newStatus }
+      })
+    } catch (e) {
+      console.warn('Failed to enqueue sync for paymentStatus toggle', e)
+    }
+
+    return { ...expense, paymentStatus: newStatus }
+  } catch (e) {
+    console.error('Failed to toggle payment status', e)
+    throw e
+  }
+}

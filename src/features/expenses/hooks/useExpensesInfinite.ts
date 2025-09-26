@@ -49,6 +49,10 @@ export function useExpensesInfinite(options: UseExpensesInfiniteOptions) {
         if (filter.categoryIds) filters.categoryId = filter.categoryIds[0] // simple mapping for now
         if (filter.startDate) filters.date = { __range: [new Date(filter.startDate).toISOString(), (filters.date && (filters.date as any).__range?.[1]) || undefined] }
         if (filter.endDate) filters.date = { __range: [(filters.date && (filters.date as any).__range?.[0]) || undefined, new Date(filter.endDate).toISOString()] }
+        // Support paymentStatus filter coming from UI chips (e.g. 'paid' | 'unpaid')
+        if (filter.paymentStatus) {
+          filters.paymentStatus = filter.paymentStatus
+        }
         // text search and complex predicates remain client-side after fetch
       }
 

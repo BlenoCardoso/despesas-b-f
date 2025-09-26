@@ -263,13 +263,35 @@ export class DatabaseMiddleware {
         // Support range queries expressed as { __range: [fromIso, toIso] }
         if (value && typeof value === 'object' && '__range' in value) {
           const [from, to] = (value as any).__range || []
+
+          // Helper: produce local YYYY-MM-DD (date-only) representation for comparison
+          const toLocalDateOnly = (v: any) => {
+            try {
+              if (!v) return null
+              // If already a YYYY-MM-DD string, keep as-is
+              if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+              const d = (typeof v === 'string' || typeof v === 'number') ? new Date(v) : (v instanceof Date ? v : new Date(String(v)))
+              if (isNaN(d.getTime())) return null
+              const yy = d.getFullYear()
+              const mm = String(d.getMonth() + 1).padStart(2, '0')
+              const dd = String(d.getDate()).padStart(2, '0')
+              return `${yy}-${mm}-${dd}`
+            } catch (e) {
+              return null
+            }
+          }
+
+          const fromDateOnly = toLocalDateOnly(from)
+          const toDateOnly = toLocalDateOnly(to)
+
           collection = collection.filter((item: any) => {
             try {
               const raw = item[key]
               if (!raw) return false
-              const itemIso = (typeof raw === 'string') ? new Date(raw).toISOString() : (raw instanceof Date ? raw.toISOString() : String(raw))
-              if (from && itemIso < from) return false
-              if (to && itemIso > to) return false
+              const itemDateOnly = toLocalDateOnly(raw)
+              if (!itemDateOnly) return false
+              if (fromDateOnly && itemDateOnly < fromDateOnly) return false
+              if (toDateOnly && itemDateOnly > toDateOnly) return false
               return true
             } catch (e) {
               return false
@@ -316,6 +338,30 @@ export class DatabaseMiddleware {
           return
         }
 
+        // Special-case: personalOnly (not shared)
+        if (key === 'personalOnly') {
+          if (value) {
+            collection = collection.filter((item: any) => !item.isShared)
+          }
+          return
+        }
+
+        // Special-case: paymentStatus (paid / unpaid / pending)
+        if (key === 'paymentStatus') {
+          // Normalize common values: 'paid' means item.paymentStatus === 'paid'
+          // 'unpaid' or 'pending' means paymentStatus !== 'paid'
+          try {
+            if (value === 'paid') {
+              collection = collection.filter((item: any) => (item.paymentStatus || 'unpaid') === 'paid')
+            } else {
+              collection = collection.filter((item: any) => (item.paymentStatus || 'unpaid') !== 'paid')
+            }
+          } catch (e) {
+            // swallow and let outer fallback handle it
+          }
+          return
+        }
+
         // Support a sentinel for inequality created in query() wrapper: { __not: v }
         if (value && typeof value === 'object' && '__not' in value) {
           const v = (value as any).__not
@@ -334,9 +380,16 @@ export class DatabaseMiddleware {
       let items: any[] = []
       if (collection && typeof (collection as any).orderBy === 'function') {
         // Dexie-backed path: use DB ordering and pagination
-        collection = direction === 'desc'
-          ? (collection as any).orderBy(field).reverse()
-          : (collection as any).orderBy(field)
+        try {
+          collection = direction === 'desc'
+            ? (collection as any).orderBy(field).reverse()
+            : (collection as any).orderBy(field)
+        } catch (e) {
+          // Some filtered collection views (depending on Dexie/runtime) may
+          // still throw when calling orderBy. Fall back to the array path below.
+          try { console.warn('[DatabaseMiddleware] orderBy threw, falling back to in-memory sort', String(e && e.message ? e.message : e)) } catch(_){}
+          collection = null as any
+        }
 
         // Apply cursor based pagination using DB lookups when available
         if (cursor) {

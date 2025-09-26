@@ -3,18 +3,7 @@ import { useState } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-// Badge replaced by lightweight chip spans to match new brand styles
-import { 
-  MoreHorizontal, 
-  Edit, 
-  Copy, 
-  Trash2, 
-  Paperclip,
-  CreditCard,
-  Tag,
-  ChevronDown,
-  
-} from 'lucide-react'
+import { MoreHorizontal, Edit, Copy, Trash2, Paperclip, CreditCard, Tag, ChevronDown, Check } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,50 +11,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-// Dynamically import react-window in the browser (avoid using require which breaks in Vite/browser)
-const useVirtualList = () => {
-  const [ListComp, setListComp] = React.useState<any | null>(null)
-
-  React.useEffect(() => {
-    let mounted = true
-    import('react-window')
-      .then(mod => {
-        if (mounted) setListComp(() => (mod as any).FixedSizeList || (mod as any).default || (mod as any))
-      })
-      .catch(err => {
-        // optional: log for debugging
-        console.debug('react-window not available (will fallback to non-virtualized list)', err)
-      })
-
-    return () => { mounted = false }
-  }, [])
-
-  return ListComp
-}
-
-// Local minimal type for the list child props used here. Keeps us independent from
-// possibly-mismatched @types/react-window in the repo and is sufficient for our renderer.
-type ListChildComponentProps = {
-  index: number
-  style?: React.CSSProperties
-  data?: any
-}
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCurrentUser } from '@/core/store'
+import { useQueryClient } from '@tanstack/react-query'
+import { togglePaymentStatus } from '@/features/expenses/services/expense-service'
 import { Spinner } from '@/components/ui/spinner'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { formatCurrency, formatDateGroup, formatPaymentMethod } from '@/core/utils/formatters'
-// import type { Expense } from '@/types' (not used in focused check)
 import type { ExpenseGroup, FlexibleExpense } from '../types/expense'
 import { cn } from '@/lib/utils'
 import { parseISO, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { useExpensesInfinite } from '../hooks/useExpensesInfinite'
 import { highlightText } from '@/core/utils/highlight'
 
-// Default payment method when not specified
-const DEFAULT_PAYMENT_METHOD = "dinheiro"
-
-// Interfaces específicas para este componente
+const DEFAULT_PAYMENT_METHOD = 'dinheiro'
 
 interface ExpenseListProps {
   householdId: string
@@ -81,213 +40,125 @@ interface ExpenseListProps {
   activeFilters?: string[]
   searchText?: string
   filter?: any
-  expenses?: FlexibleExpense[] // Added this line to define the correct prop name
+  expenses?: FlexibleExpense[]
   isLoading?: boolean
   emptyMessage?: string
 }
 
-export function ExpenseList({
-  householdId,
-  month,
-  categoryId,
-  memberId,
-  categories,
-  onEdit,
-  onDuplicate,
-  onDelete,
-  onViewAttachments,
-  onCreate,
-  // emptyMessage removed (not used) to avoid unused local errors
-  activeFilters = [],
-  searchText = '',
-  filter = undefined,
-}: ExpenseListProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+function AmountWithPaidToggle({ expense }: { expense: any }) {
+  const qc = useQueryClient()
+  const [loading, setLoading] = React.useState(false)
+  const isPaid = ((expense.paymentStatus || 'unpaid') === 'paid')
 
-  // Setup infinite query
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-  // error and refetch intentionally not captured here to avoid unused variable errors
-  } = useExpensesInfinite({
-    householdId,
-    month,
-    categoryId,
-    memberId,
-    filter
-  })
-
-  // Setup intersection observer for infinite scroll
-  const { ref } = useInView({
-    threshold: 0.1,
-    onChange: (visible: boolean) => {
-      if (visible && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage()
-      }
-    }
-  })
-
-  // Group expenses by date
-  const groupedExpenses = React.useMemo(() => {
-    if (!data) return []
-
-    const groups: Record<string, ExpenseGroup> = {}
-
-    const pages: any[] = Array.isArray((data as any).pages) ? (data as any).pages : []
-    // helper to safely convert various date shapes into a Date object
-    const toDate = (v: any) => {
-      try {
-        if (!v) return new Date(NaN)
-        if (v instanceof Date) return v
-        if (typeof v === 'string') return parseISO(v)
-        if (typeof v === 'number') return new Date(v)
-        // If object with toISOString (e.g., serialized Date) use that
-        if (v && typeof v.toISOString === 'function') return new Date(v.toISOString())
-        return new Date(String(v))
-      } catch (e) {
-        return new Date(NaN)
-      }
-    }
-
-    pages.forEach((page: any) => {
-      (page.expenses || []).forEach((expense: any) => { // Changed 'items' to 'expenses'
+  const handleToggle = async () => {
+    if (loading) return
+    setLoading(true)
+    try {
+      const nextStatus = isPaid ? 'unpaid' : 'paid'
+      qc.setQueriesData({ queryKey: ['expenses'], exact: false }, (old: any) => {
+        if (!old) return old
         try {
-          // Parse date safely to Date object
-          const expenseDate = toDate(expense.date)
-
-          // Skip if date is invalid
-          if (isNaN(expenseDate.getTime())) {
-            console.warn('⚠️ Data inválida encontrada na despesa:', expense.id)
-            return
+          if (old && typeof old === 'object' && Array.isArray(old.pages)) {
+            return { ...old, pages: old.pages.map((p: any) => ({ ...p, expenses: (p.expenses || []).map((it: any) => it.id === expense.id ? { ...it, paymentStatus: nextStatus } : it) })) }
           }
-
-          const dateKey = format(expenseDate, 'yyyy-MM-dd')
-          const dateLabel = formatDateGroup(expenseDate)
-
-          if (!groups[dateKey]) {
-            groups[dateKey] = {
-              date: dateKey,
-              label: dateLabel,
-              expenses: [],
-              total: 0,
-            }
-          }
-
-          groups[dateKey].expenses.push(expense)
-          groups[dateKey].total += expense.amount
-        } catch (error) {
-          console.error('❌ Erro ao processar despesa no agrupamento:', expense.id, error);
-          // Pular esta despesa se há erro
+          if (Array.isArray(old)) return old.map((it: any) => it.id === expense.id ? { ...it, paymentStatus: nextStatus } : it)
+          return old
+        } catch (e) {
+          return old
         }
       })
-    })
+      await togglePaymentStatus(expense.id)
+      qc.invalidateQueries({ queryKey: ['expenses'], exact: false })
+    } catch (e) {
+      qc.invalidateQueries({ queryKey: ['expenses'], exact: false })
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    // Sort groups by date (newest first)
-    return Object.values(groups).sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    )
-  }, [data])
+  return (
+    <div className="text-right shrink-0 flex items-center gap-3">
+      <button
+        aria-pressed={isPaid}
+        aria-label={isPaid ? 'Despesa marcada como paga. Clique para desmarcar.' : 'Marcar despesa como paga'}
+        title={isPaid ? 'Pago — clique para desmarcar' : 'Marcar como pago'}
+        onClick={handleToggle}
+        className={`flex items-center justify-center w-7 h-7 rounded-full transition-all duration-150 ${isPaid ? 'bg-green-500 hover:scale-105' : 'bg-gray-100 hover:bg-gray-200'}`}
+      >
+        {loading ? <Spinner className="h-4 w-4 text-white" /> : (
+          isPaid ? <Check className="h-4 w-4 text-white" /> : <span className="block w-2 h-2 rounded-full bg-gray-400" />
+        )}
+      </button>
+      <div className="monetary-value font-semibold">{formatCurrency(expense.amount)}</div>
+    </div>
+  )
+}
 
-  // Flatten groups into rows for virtualization: header rows and item rows
-  const flattenedRows = React.useMemo(() => {
-    const rows: Array<{ type: 'header' | 'item'; key: string; data?: any }> = []
-    ;(groupedExpenses || []).forEach(group => {
-      rows.push({ type: 'header', key: `h-${group.date}`, data: group })
-      group.expenses.forEach((expense: any) => {
-        rows.push({ type: 'item', key: `i-${expense.id}`, data: { expense, group } })
+export function ExpenseList(props: ExpenseListProps) {
+  const { householdId, month, categoryId, memberId, categories, onEdit, onDuplicate, onDelete, onViewAttachments, onCreate, activeFilters = [], searchText = '', filter } = props
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useExpensesInfinite({ householdId, month, categoryId, memberId, filter })
+  const { ref } = useInView({ threshold: 0.1, onChange: (v) => { if (v && hasNextPage && !isFetchingNextPage) fetchNextPage() } })
+
+  const groupedExpenses = React.useMemo(() => {
+    if (!data) return []
+    const groups: Record<string, ExpenseGroup> = {}
+    const pages: any[] = Array.isArray((data as any).pages) ? (data as any).pages : []
+    pages.forEach(page => {
+      (page.expenses || []).forEach((expense: any) => {
+        const d = expense.date ? parseISO(String(expense.date)) : new Date(NaN)
+        if (isNaN(d.getTime())) return
+        const key = format(d, 'yyyy-MM-dd')
+        const label = formatDateGroup(d)
+        if (!groups[key]) groups[key] = { date: key, label, expenses: [], total: 0 }
+        groups[key].expenses.push(expense)
+        groups[key].total += Number(expense.amount || 0)
       })
     })
-    return rows
-  }, [groupedExpenses])
+    return Object.values(groups).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [data])
 
-  const toggleGroup = (dateKey: string) => {
-    const newExpanded = new Set(expandedGroups)
-    if (newExpanded.has(dateKey)) {
-      newExpanded.delete(dateKey)
-    } else {
-      newExpanded.add(dateKey)
-    }
-    setExpandedGroups(newExpanded)
-  }
-
-  // Attempt to load react-window for virtualization; we'll fallback gracefully if it's missing
-  const VirtualList = useVirtualList()
-
-  const getCategoryInfo = (categoryId: string) => {
-    return categories.find(cat => cat.id === categoryId) || {
-      name: 'Categoria não encontrada',
-      icon: 'help-circle',
-      color: '#6b7280'
-    }
-  }
-
-  // Apply client-side filters (chips) to grouped expenses
   const filteredGroups = React.useMemo(() => {
     if (!groupedExpenses || groupedExpenses.length === 0) return []
     if (!activeFilters || activeFilters.length === 0) return groupedExpenses
-
     const now = new Date()
-    return groupedExpenses
-      .map(g => ({
-        ...g,
-        expenses: g.expenses.filter(exp => {
-          try {
-            const expDate = parseISO(exp.date)
-            for (const f of activeFilters) {
-              if (f === 'today') {
-                if (format(expDate, 'yyyy-MM-dd') !== format(now, 'yyyy-MM-dd')) return false
-              } else if (f === 'yesterday') {
-                const y = new Date(now)
-                y.setDate(now.getDate() - 1)
-                if (format(expDate, 'yyyy-MM-dd') !== format(y, 'yyyy-MM-dd')) return false
-              } else if (f === 'this_week') {
-                const start = startOfWeek(now)
-                const end = endOfWeek(now)
-                if (expDate < start || expDate > end) return false
-              } else if (f === 'this_month') {
-                const mStart = startOfMonth(now)
-                const mEnd = endOfMonth(now)
-                if (expDate < mStart || expDate > mEnd) return false
-              } else if (f === 'personal') {
-                if (exp.isShared) return false
-              } else if (f === 'shared') {
-                if (!exp.isShared) return false
-              } else if (f === 'paid') {
-                if ((exp.paymentStatus || 'unpaid') !== 'paid') return false
-              } else if (f === 'pending') {
-                if ((exp.paymentStatus || 'unpaid') === 'paid') return false
-              }
-            }
-            return true
-          } catch (e) {
-            return true
+    return groupedExpenses.map(g => ({
+      ...g,
+      expenses: g.expenses.filter((exp: any) => {
+        try {
+          const expDate = parseISO(String(exp.date))
+          for (const f of activeFilters) {
+            if (f === 'today' && format(expDate, 'yyyy-MM-dd') !== format(now, 'yyyy-MM-dd')) return false
+            if (f === 'yesterday') { const y = new Date(now); y.setDate(now.getDate() - 1); if (format(expDate, 'yyyy-MM-dd') !== format(y, 'yyyy-MM-dd')) return false }
+            if (f === 'this_week') { const s = startOfWeek(now); const e = endOfWeek(now); if (expDate < s || expDate > e) return false }
+            if (f === 'this_month') { const s = startOfMonth(now); const e = endOfMonth(now); if (expDate < s || expDate > e) return false }
+            if (f === 'personal' && exp.isShared) return false
+            if (f === 'shared' && !exp.isShared) return false
+            if (f === 'paid' && (exp.paymentStatus || 'unpaid') !== 'paid') return false
+            if (f === 'pending' && (exp.paymentStatus || 'unpaid') === 'paid') return false
           }
-        })
-      }))
-      .filter(g => g.expenses && g.expenses.length > 0)
+          return true
+        } catch (e) { return true }
+      })
+    })).filter(g => g.expenses && g.expenses.length > 0)
   }, [groupedExpenses, activeFilters])
 
-  // Loading state
-  if (isLoading && (!data || !Array.isArray((data as any).pages) || (data as any).pages.length === 0)) {
-    return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <Card key={i}>
-            <CardContent className="p-4">
-              <div className="h-4 bg-gray-100 rounded mb-2 w-2/3" />
-              <div className="h-3 bg-gray-100 rounded w-1/2" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    )
+  const effectiveGroups = (filteredGroups && filteredGroups.length > 0) ? filteredGroups : groupedExpenses
+
+  const toggleGroup = (key: string) => {
+    const s = new Set(expandedGroups)
+    if (s.has(key)) s.delete(key)
+    else s.add(key)
+    setExpandedGroups(s)
   }
 
-  // If there are no expenses at all, show an empty state with CTA
-  const effectiveGroups = (filteredGroups && filteredGroups.length > 0) ? filteredGroups : groupedExpenses
+  const getCategoryInfo = (id?: string) => categories.find(c => c.id === id) || { id: 'none', name: 'Categoria', icon: '', color: '#6b7280' }
+
+  if (isLoading && (!data || !Array.isArray((data as any).pages) || (data as any).pages.length === 0)) {
+    return <div className="space-y-3">{[1,2,3].map(i => <Card key={i}><CardContent className="p-4"><div className="h-4 bg-gray-100 rounded mb-2 w-2/3"/><div className="h-3 bg-gray-100 rounded w-1/2"/></CardContent></Card>)}</div>
+  }
+
   if (!isLoading && effectiveGroups.length === 0) {
     return (
       <div className="py-8">
@@ -296,164 +167,61 @@ export function ExpenseList({
             <div className="flex flex-col items-start gap-3">
               <h3 className="text-lg font-semibold">Nenhuma despesa encontrada</h3>
               <p className="text-sm text-gray-600">Ainda não há despesas neste período. Você pode criar a primeira despesa agora.</p>
-              <div className="mt-4">
-                <Button onClick={() => onCreate?.()} className="mr-2">Criar primeira despesa</Button>
-                <Button variant="ghost" onClick={() => window.location.reload()}>Recarregar</Button>
-              </div>
+              <div className="mt-4"><Button onClick={() => onCreate?.()} className="mr-2">Criar primeira despesa</Button><Button variant="ghost" onClick={() => window.location.reload()}>Recarregar</Button></div>
             </div>
           </CardContent>
         </Card>
       </div>
     )
   }
-  const totalRows = (filteredGroups.length ? filteredGroups : groupedExpenses).reduce((acc, g) => acc + 1 + (g.expenses?.length || 0), 0)
-
-  // If many rows, try to virtualize. If react-window hasn't loaded yet, render non-virtualized fallback.
-  if (totalRows > 80) {
-    if (VirtualList) {
-      const List = VirtualList as any
-      return (
-        <List
-          height={600}
-          itemCount={flattenedRows.length}
-          itemSize={64}
-          width="100%"
-        >
-          {({ index, style }: ListChildComponentProps) => {
-            const row = flattenedRows[index]
-            if (!row) return null
-            if (row.type === 'header') {
-              const group = row.data
-              return (
-                <div style={style} key={row.key} className="p-2 bg-white border-b">
-                  <button onClick={() => toggleGroup(group.date)} className="w-full text-left flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                      <h3 className="font-medium text-sm">{group.label}</h3>
-                      <span className="text-xs text-gray-500">{group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}</span>
-                    </div>
-                    <div className="text-sm font-semibold">{formatCurrency(group.total)}</div>
-                  </button>
-                </div>
-              )
-            }
-
-            // item row
-            const { expense } = row.data
-            return (
-              <div style={style} key={row.key} className="p-2 border-b">
-                <ExpenseItem
-                  expense={expense}
-                  category={getCategoryInfo(expense.categoryId || expense.category || '')}
-                  onEdit={onEdit}
-                  onDuplicate={onDuplicate}
-                  onDelete={onDelete}
-                  onViewAttachments={onViewAttachments}
-                  searchText={searchText}
-                />
-              </div>
-            )
-          }}
-        </List>
-      )
-    }
-
-    // Fallback: react-window not loaded yet — render regular list so user can still see content
-    return (
-      <div className="space-y-3">
-        {(filteredGroups.length ? filteredGroups : groupedExpenses).map(group => (
-          <div key={group.date}>
-            <div className="p-2 bg-white border-b">
-              <button onClick={() => toggleGroup(group.date)} className="w-full text-left flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <ChevronDown className="h-4 w-4 text-gray-500" />
-                  <h3 className="font-medium text-sm">{group.label}</h3>
-                  <span className="text-xs text-gray-500">{group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}</span>
-                </div>
-                <div className="text-sm font-semibold">{formatCurrency(group.total)}</div>
-              </button>
-            </div>
-            <div>
-              {group.expenses.map(expense => (
-                <div key={(expense as any).id} className="p-2 border-b">
-                  <ExpenseItem
-                    expense={expense}
-                    category={getCategoryInfo(expense.categoryId || (expense as any).category || '')}
-                    onEdit={onEdit}
-                    onDuplicate={onDuplicate}
-                    onDelete={onDelete}
-                    onViewAttachments={onViewAttachments}
-                    searchText={searchText}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-3">
-      {(filteredGroups.length ? filteredGroups : groupedExpenses).map(group => (
-        <motion.div
-          key={group.date}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+      {effectiveGroups.map(group => (
+        <motion.div key={group.date} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
           <Card>
             <CardContent className="p-0">
-              {/* Compact Group Header */}
-              <button
-                onClick={() => toggleGroup(group.date)}
-                className="w-full flex items-center justify-between py-3 px-3 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation min-h-[44px]"
-              >
+              <button onClick={() => toggleGroup(group.date)} className="w-full flex items-center justify-between py-3 px-3 hover:bg-gray-50 active:bg-gray-100 transition-colors min-h-[44px]">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <motion.div
-                    animate={{ rotate: expandedGroups.has(group.date) ? 180 : 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="shrink-0"
-                  >
-                    <ChevronDown className="h-4 w-4 text-gray-500" />
-                  </motion.div>
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <h3 className="font-medium text-sm truncate">{group.label}</h3>
-                    <span className="text-gray-400 shrink-0">•</span>
-                    <span className="text-xs text-gray-500 shrink-0">
-                      {group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}
-                    </span>
-                  </div>
+                  <motion.div animate={{ rotate: expandedGroups.has(group.date) ? 180 : 0 }} transition={{ duration: 0.2 }} className="shrink-0"><ChevronDown className="h-4 w-4 text-gray-500" /></motion.div>
+                  <div className="flex items-center gap-2 min-w-0 flex-1"><h3 className="font-medium text-sm truncate">{group.label}</h3><span className="text-xs text-gray-500">{group.expenses.length} {group.expenses.length === 1 ? 'despesa' : 'despesas'}</span></div>
                 </div>
-                <div className="shrink-0 ml-2">
-                  <span className="text-sm font-semibold">{formatCurrency(group.total)}</span>
-                </div>
+                <div className="shrink-0 ml-2"><span className="text-sm font-semibold">{formatCurrency(group.total)}</span></div>
               </button>
 
-              {/* Group expenses */}
               <AnimatePresence>
                 {expandedGroups.has(group.date) && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                     <div className="border-t">
-                      {group.expenses.map((expense, index) => (
-                        <ExpenseItem
-                          key={(expense as any).id}
-                          expense={expense}
-                          category={getCategoryInfo(expense.categoryId || (expense as any).category || '')}
-                          onEdit={onEdit}
-                          onDuplicate={onDuplicate}
-                          onDelete={onDelete}
-                          onViewAttachments={onViewAttachments}
-                          isLast={index === group.expenses.length - 1}
-                          searchText={searchText}
-                        />
+                      {group.expenses.map((expense, idx) => (
+                        <div key={(expense as any).id} className={`p-3 ${idx !== group.expenses.length - 1 ? 'border-b' : ''}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: getCategoryInfo(expense.categoryId || expense.category).color }}>
+                                {getCategoryInfo(expense.categoryId || expense.category).icon || <Tag className="h-4 w-4" />}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium truncate">{highlightText(expense.title || expense.description || 'Despesa sem título', searchText)}</div>
+                                <div className="text-xs text-gray-500 mt-1">{formatPaymentMethod(expense.paymentMethod || DEFAULT_PAYMENT_METHOD)} • {format(new Date(expense.date), 'dd/MM/yyyy')}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <AmountWithPaidToggle expense={expense} />
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="button-icon-touch"><MoreHorizontal className="h-4 w-4" /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {onEdit && <DropdownMenuItem onClick={() => onEdit(expense)}><Edit className="h-4 w-4 mr-2"/>Editar</DropdownMenuItem>}
+                                  {onDuplicate && <DropdownMenuItem onClick={() => onDuplicate(expense)}><Copy className="h-4 w-4 mr-2"/>Duplicar</DropdownMenuItem>}
+                                  {expense.attachments && expense.attachments.length > 0 && onViewAttachments && <DropdownMenuItem onClick={() => onViewAttachments(expense)}><Paperclip className="h-4 w-4 mr-2"/>Ver anexos</DropdownMenuItem>}
+                                  {onDelete && <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => onDelete(expense)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2"/>Excluir</DropdownMenuItem></>}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </motion.div>
@@ -464,17 +232,11 @@ export function ExpenseList({
         </motion.div>
       ))}
 
-      {/* Infinite scroll trigger and loading indicator */}
-      <div ref={ref} className="h-8 overflow-hidden">
-        {isFetchingNextPage && (
-          <div className="flex justify-center items-center p-4">
-            <Spinner />
-          </div>
-        )}
-      </div>
+      <div ref={ref} className="h-8 overflow-hidden">{isFetchingNextPage && <div className="flex justify-center items-center p-4"><Spinner /></div>}</div>
     </div>
   )
 }
+
 
 interface ExpenseItemProps {
   expense: FlexibleExpense
@@ -626,9 +388,7 @@ function ExpenseItem({
               </div>
               
               {/* Amount - right aligned */}
-              <div className="text-right shrink-0">
-                <div className="monetary-value font-semibold">{formatCurrency(expense.amount)}</div>
-              </div>
+              <AmountWithPaidToggle expense={expense} />
             </div>
           </div>
         </div>
