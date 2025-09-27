@@ -10,6 +10,7 @@ import { deleteExpense as serviceDeleteExpense, undoExpenseDelete } from '../ser
 import { db } from '@/lib/db'
 import { simpleExpenseService } from '../services/simpleExpenseService'
 import { authService } from '@/services/authService'
+import { useAuth } from '@/hooks/useAuth'
 import { ExpenseFormData } from '../types'
 import { useQueryClient } from '@tanstack/react-query'
 import { subMonths, addMonths, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
@@ -47,7 +48,7 @@ export function ExpensesPage() {
   const [deleteCandidate, setDeleteCandidate] = useState<any>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const queryClient = useQueryClient()
-  const currentUser = authService.getCurrentUser()
+  const { user: currentUser } = useAuth()
   const { currentHousehold } = useAppStore()
   const householdIdForList = currentHousehold?.id || currentUser?.households?.[0] || 'default-household'
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
@@ -125,12 +126,25 @@ export function ExpensesPage() {
         // simple user list via authService (synchronous) or DB
         const { db } = await import('@/core/db/database')
         const users = (await db.users.toArray?.()) || []
-        setMembers(users.map((u: any) => ({ id: u.id, name: u.name })))
+        const mapped = users.map((u: any) => ({ id: u.id, name: u.name }))
+        // Ensure the currentUser is present in members — sometimes local DB may be empty
+        try {
+          if (currentUser && currentUser.id) {
+            const exists = mapped.find(m => String(m.id) === String(currentUser.id))
+            if (!exists) {
+              const displayName = currentUser.name || (currentUser as any).displayName || (currentUser as any).email || 'Você'
+              mapped.unshift({ id: currentUser.id, name: displayName })
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+        setMembers(mapped)
       } catch (e) {
         // ignore
       }
     })()
-  }, [householdIdForList])
+  }, [householdIdForList, currentUser])
 
   // Mock categories for now
   const categories = [

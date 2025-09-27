@@ -42,17 +42,34 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 	const [advancedOpen, setAdvancedOpen] = useState<boolean>(false)
 	const [errors, setErrors] = useState<string[]>([])
 	const [splitMethod, setSplitMethod] = useState<'equal'|'percentage'|'exact'>('equal')
-	const [participants, setParticipants] = useState<string[]>([])
+	// Initialize participants from expense/initialData split when present,
+	// otherwise default to the current user (so the logged user appears by default)
+	const [participants, setParticipants] = useState<string[]>(() => {
+		try {
+			if (expense && expense.split && Array.isArray(expense.split.parts)) return expense.split.parts.map((p: any) => p.participantId)
+			if (initialData && initialData.split && Array.isArray(initialData.split.parts)) return initialData.split.parts.map((p: any) => p.participantId)
+			if (currentUser && (currentUser as any).id) return [ (currentUser as any).id ]
+		} catch (e) {
+			// ignore
+		}
+		return []
+	})
 	const [splitPreview, setSplitPreview] = useState<Array<{ participantId: string; percentage: number }>>([])
 
 	useEffect(() => {
 		if (expense?.amount != null) setAmountInput(formatCurrency(expense.amount))
 		if (expense?.categoryId) setCategoryId(expense.categoryId)
+
 		if (expense?.split && Array.isArray(expense.split.parts)) {
 			setSplitPreview(expense.split.parts.map((p: any) => ({ participantId: p.participantId, percentage: p.percentage })))
 			setParticipants(expense.split.parts.map((p: any) => p.participantId))
+		} else {
+			// No explicit split on the expense: ensure current user is selected by default
+			if (currentUser && (currentUser as any).id) {
+				setParticipants(prev => (prev && prev.length > 0) ? prev : [ (currentUser as any).id ])
+			}
 		}
-	}, [expense])
+	}, [expense, currentUser])
 
 	const validate = () => {
 		const errs: string[] = []
@@ -78,10 +95,10 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 		}
 
 		// If coupleMode is active and there are at least 2 members selected, include split based on preview
-		if (coupleMode && splitPreview.length >= 1) {
+		if (splitPreview && splitPreview.length >= 1) {
 			data.split = {
 				mode: 'percentage',
-				participants: splitPreview.map(p => ({ memberId: p.participantId, percentage: p.percentage })),
+				participants: splitPreview.map(p => ({ participantId: (p as any).participantId || (p as any).id || String((p as any).participantId || (p as any).id), percentage: p.percentage })),
 				visibility: 'shared'
 			}
 		} else if (splitMethod === 'equal' && participants.length >= 2) {
@@ -262,9 +279,11 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 					<div>
 						<label className="block text-sm font-medium mb-1">Participantes</label>
 						<select multiple value={participants} onChange={(e) => setParticipants(Array.from(e.target.selectedOptions).map(o => o.value))} className="w-full border rounded px-3 py-2">
-							{(members || []).map((m: Member) => (
-								<option key={m.id} value={m.id}>{m.name}</option>
-							))}
+							{(members || []).map((m: Member) => {
+								const isMe = currentUser && (currentUser as any).id === m.id
+								const displayName = isMe ? ((currentUser as any).name || m.name || 'Você') : (m.name || m.id)
+								return <option key={m.id} value={m.id}>{displayName}{isMe ? ' (Você)' : ''}</option>
+							})}
 						</select>
 
 																	<div className="flex items-center gap-2 mt-2">
@@ -337,6 +356,16 @@ function ExpenseFormComponent({ expense, initialData, categories = [], onSubmit,
 
 			<div className="mt-4 flex items-center justify-end gap-2">
 				<div className="text-xs text-muted-foreground mr-auto">Valor formatado: {formatCurrency(parseCurrency(amountInput) || 0)}</div>
+				{/* Visual hint: when splitPreview exists, inform the user the expense will be shared */}
+				{splitPreview && splitPreview.length > 0 && (
+					<div className="mr-4 text-sm text-emerald-700 flex items-center gap-2">
+						<span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs">Compartilhada</span>
+						<div className="text-xs text-emerald-900">Será compartilhada com {splitPreview.map(s => {
+							const member = members.find((m: any) => m.id === s.participantId)
+							return member ? member.name : (s.participantId || 'membro')
+						}).join(' • ')}</div>
+					</div>
+				)}
 				<button type="button" onClick={onCancel} className="px-3 py-2 rounded border">Cancelar</button>
 				<button type="submit" className="px-3 py-2 rounded bg-primary text-white">{isLoading ? 'Salvando...' : 'Salvar'}</button>
 			</div>
