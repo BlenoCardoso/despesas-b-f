@@ -1,5 +1,25 @@
 import { createBrowserRouter } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { firebaseExpenseService } from './services/firebaseExpenseService'
+import { firebaseHouseholdService } from './services/firebaseHouseholdService'
+import { auth } from './config/firebase'
+import type { Expense } from './types/firebase-schema'
+
+// Função auxiliar para formatar datas
+const formatDate = (date: Date): string => {
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  
+  if (date.toDateString() === today.toDateString()) return 'Hoje'
+  if (date.toDateString() === yesterday.toDateString()) return 'Ontem'
+  
+  const diffTime = Math.abs(today.getTime() - date.getTime())
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  if (diffDays <= 7) return `${diffDays} dias atrás`
+  return date.toLocaleDateString('pt-BR')
+}
 
 // Componente principal de despesas
 function ExpenseApp() {
@@ -9,7 +29,119 @@ function ExpenseApp() {
   const [filter, setFilter] = useState('all') // all, paid, pending, category
   const [sortBy, setSortBy] = useState('date') // date, amount, title
   const [showStats, setShowStats] = useState(false)
-  const [expenses, setExpenses] = useState([
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  
+  // Estados do Firebase
+  const [expenses, setExpenses] = useState<any[]>([])  // Temporariamente any[] para compatibilidade
+  const [loading, setLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentHousehold, setCurrentHousehold] = useState<any>(null)
+  const [connected, setConnected] = useState(false)
+
+  // Simular usuário logado (para demo)
+  useEffect(() => {
+    const mockUser = {
+      uid: 'demo-user-123',
+      email: 'demo@exemplo.com',
+      displayName: 'Usuário Demo'
+    }
+    setCurrentUser(mockUser)
+    initializeDemo(mockUser.uid)
+  }, [])
+
+  // Inicializar demo com dados
+  const initializeDemo = async (userId: string) => {
+    try {
+      setLoading(true)
+      console.log('🚀 Inicializando sistema de compartilhamento...')
+      
+      // Verificar se já existe uma household
+      const households = await firebaseHouseholdService.getUserHouseholds(userId)
+      let householdId: string
+      
+      if (households.length === 0) {
+        console.log('🏠 Criando nova household...')
+        householdId = await firebaseHouseholdService.createHousehold('Casa B&F', userId)
+        
+        // Criar algumas despesas demo
+        await createDemoExpenses(householdId, userId)
+      } else {
+        householdId = households[0].id
+        console.log('🏠 Usando household existente:', householdId)
+      }
+      
+      const household = await firebaseHouseholdService.getHouseholdById(householdId)
+      setCurrentHousehold(household)
+      
+      // Configurar listener em tempo real
+      console.log('🔄 Configurando sincronização em tempo real...')
+      const unsubscribe = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
+        console.log('📡 Despesas sincronizadas:', expensesData.length)
+        // Adaptar dados Firebase para UI
+        const adaptedExpenses = expensesData.map(exp => ({
+          ...exp,
+          title: exp.description,
+          date: formatDate(exp.createdAt),
+          paidBy: exp.createdBy === userId ? 'Você' : 'Parceiro',
+          splitType: 'equal', // Padrão por enquanto
+          isPaid: Math.random() > 0.3 // Simular alguns como não pagos
+        }))
+        setExpenses(adaptedExpenses)
+        setConnected(true)
+      })
+      
+      setLoading(false)
+      return unsubscribe
+      
+    } catch (error) {
+      console.error('❌ Erro ao inicializar:', error)
+      setLoading(false)
+      // Fallback para dados locais se Firebase falhar
+      setExpenses(getLocalExpenses())
+    }
+  }
+
+  // Criar despesas demo no Firebase
+  const createDemoExpenses = async (householdId: string, userId: string) => {
+    const demoExpenses = [
+      {
+        householdId,
+        description: '🛒 Supermercado',
+        amount: 150.50,
+        category: 'alimentacao',
+        paymentMethod: 'card' as const,
+        createdBy: userId
+      },
+      {
+        householdId,
+        description: '⛽ Combustível',
+        amount: 80.00,
+        category: 'transporte',
+        paymentMethod: 'money' as const,
+        createdBy: 'partner-user'
+      },
+      {
+        householdId,
+        description: '🍕 Almoço',
+        amount: 25.00,
+        category: 'alimentacao',
+        paymentMethod: 'pix' as const,
+        createdBy: userId
+      }
+    ]
+
+    for (const expense of demoExpenses) {
+      try {
+        await firebaseExpenseService.createExpense(expense)
+        console.log('✅ Despesa demo criada:', expense.description)
+      } catch (error) {
+        console.error('❌ Erro ao criar despesa demo:', error)
+      }
+    }
+  }
+
+  // Fallback para dados locais
+  const getLocalExpenses = () => [
     {
       id: 1,
       title: '🛒 Supermercado',
@@ -34,7 +166,7 @@ function ExpenseApp() {
     },
     {
       id: 3,
-      title: '🍕 Almoço',
+      title: '� Almoço',
       amount: 25.00,
       date: 'Ontem',
       paidBy: 'Você',
@@ -42,30 +174,8 @@ function ExpenseApp() {
       category: 'alimentacao',
       isPaid: false,
       createdAt: new Date('2025-10-01')
-    },
-    {
-      id: 4,
-      title: '🏠 Aluguel',
-      amount: 800.00,
-      date: 'Semana passada',
-      paidBy: 'Você',
-      splitType: 'equal',
-      category: 'casa',
-      isPaid: true,
-      createdAt: new Date('2025-09-25')
-    },
-    {
-      id: 5,
-      title: '🎬 Cinema',
-      amount: 45.00,
-      date: 'Semana passada',
-      paidBy: 'Parceiro',
-      splitType: 'equal',
-      category: 'entretenimento',
-      isPaid: false,
-      createdAt: new Date('2025-09-28')
     }
-  ])
+  ]
 
   const total = expenses.reduce((sum, exp) => sum + exp.amount, 0)
   const yourShare = expenses.reduce((sum, exp) => {
@@ -98,61 +208,97 @@ function ExpenseApp() {
       return 0
     })
 
-  const addExpense = (newExpense: any) => {
-    const expense = { 
-      ...newExpense, 
-      id: Date.now(), 
-      isPaid: false, 
-      createdAt: new Date() 
+  const addExpense = async (newExpense: any) => {
+    if (!currentHousehold || !currentUser) return
+    
+    try {
+      const expenseData = {
+        householdId: currentHousehold.id,
+        description: newExpense.title,
+        amount: newExpense.amount,
+        category: newExpense.category.toLowerCase(),
+        paymentMethod: 'card' as const,
+        createdBy: currentUser.uid
+      }
+      
+      console.log('💾 Criando nova despesa:', expenseData)
+      await firebaseExpenseService.createExpense(expenseData)
+      
+      setShowModal(false)
+    } catch (error) {
+      console.error('❌ Erro ao criar despesa:', error)
+      // Fallback local em caso de erro
+      const expense = { 
+        id: Date.now().toString(),
+        ...newExpense,
+        title: newExpense.title,
+        date: 'Hoje',
+        paidBy: 'Você',
+        splitType: 'equal',
+        isPaid: false,
+        createdAt: new Date()
+      }
+      setExpenses([expense, ...expenses])
+      setShowModal(false)
     }
-    setExpenses([expense, ...expenses])
-    setShowModal(false)
-    
-    // Feedback visual
-    setTimeout(() => {
-      const element = document.querySelector(`[data-expense-id="${expense.id}"]`)
-      element?.classList.add('animate-pulse')
-      setTimeout(() => element?.classList.remove('animate-pulse'), 1000)
-    }, 100)
   }
 
-  const editExpense = (updatedExpense: any) => {
-    setExpenses(expenses.map(exp => 
-      exp.id === updatedExpense.id ? updatedExpense : exp
-    ))
-    setEditingExpense(null)
-    setShowModal(false)
+  const editExpense = async (updatedExpense: any) => {
+    if (!currentHousehold) return
     
-    // Feedback visual
-    setTimeout(() => {
-      const element = document.querySelector(`[data-expense-id="${updatedExpense.id}"]`)
-      element?.classList.add('ring-2', 'ring-green-300')
-      setTimeout(() => element?.classList.remove('ring-2', 'ring-green-300'), 1500)
-    }, 100)
+    try {
+      const updateData = {
+        description: updatedExpense.title,
+        amount: updatedExpense.amount,
+        category: updatedExpense.category.toLowerCase()
+      }
+      
+      await firebaseExpenseService.updateExpense(updatedExpense.id, updateData)
+      setEditingExpense(null)
+      setShowModal(false)
+    } catch (error) {
+      console.error('❌ Erro ao editar despesa:', error)
+      // Fallback local
+      setExpenses(expenses.map(exp => 
+        exp.id === updatedExpense.id ? updatedExpense : exp
+      ))
+      setEditingExpense(null)
+      setShowModal(false)
+    }
   }
 
-  const deleteExpense = (id: number) => {
+  const deleteExpense = async (id: string) => {
+    if (!currentUser) return
+    
     const element = document.querySelector(`[data-expense-id="${id}"]`)
     element?.classList.add('opacity-50', 'scale-95')
     
-    setTimeout(() => {
-      setExpenses(expenses.filter(exp => exp.id !== id))
-      setShowActionMenu(null)
+    setTimeout(async () => {
+      try {
+        await firebaseExpenseService.deleteExpense(id, currentUser.uid)
+        setShowActionMenu(null)
+      } catch (error) {
+        console.error('❌ Erro ao deletar despesa:', error)
+        // Fallback local
+        setExpenses(expenses.filter(exp => exp.id !== id))
+        setShowActionMenu(null)
+      }
     }, 200)
   }
 
-  const togglePaidStatus = (id: number) => {
-    setExpenses(expenses.map(exp => 
-      exp.id === id ? { ...exp, isPaid: !exp.isPaid } : exp
-    ))
-    setShowActionMenu(null)
+  const togglePaidStatus = async (id: string) => {
+    const expense = expenses.find(exp => exp.id === id)
+    if (!expense) return
     
-    // Feedback visual
-    setTimeout(() => {
-      const element = document.querySelector(`[data-expense-id="${id}"]`)
-      element?.classList.add('animate-bounce')
-      setTimeout(() => element?.classList.remove('animate-bounce'), 1000)
-    }, 100)
+    try {
+      // Por enquanto, atualizar só localmente
+      setExpenses(expenses.map(exp => 
+        exp.id === id ? { ...exp, isPaid: !exp.isPaid } : exp
+      ))
+      setShowActionMenu(null)
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status:', error)
+    }
   }
 
   const openEditModal = (expense: any) => {
@@ -161,23 +307,59 @@ function ExpenseApp() {
     setShowActionMenu(null)
   }
 
+  // Gerar código de convite
+  const generateInviteCode = async () => {
+    if (!currentHousehold) return
+    
+    try {
+      const code = await firebaseHouseholdService.generateInviteCode(currentHousehold.id)
+      alert(`Código de convite gerado: ${code}\nCompartilhe este código para convidar pessoas!`)
+    } catch (error) {
+      console.error('❌ Erro ao gerar código:', error)
+      alert('Erro ao gerar código de convite')
+    }
+  }
+
   return (
     <div className="p-4 bg-blue-50 min-h-screen">
       <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-blue-800 mb-6 text-center">💰 Despesas Compartilhadas</h1>
-        
-        {/* Household Info */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-gray-800">🏠 Casa B&F</h2>
-              <p className="text-sm text-gray-500">2 pessoas compartilhando</p>
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">🔄 Conectando ao Firebase...</p>
             </div>
-            <button className="text-blue-600 text-sm font-medium">
-              👥 Convidar
-            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-bold text-blue-800">💰 Despesas Compartilhadas</h1>
+              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                connected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {connected ? '🟢 Online' : '🔴 Offline'}
+              </div>
+            </div>
+            
+            {/* Household Info */}
+            <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-800">
+                    🏠 {currentHousehold?.name || 'Casa B&F'}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    {currentHousehold?.members?.length || 2} pessoas compartilhando
+                  </p>
+                </div>
+                <button 
+                  onClick={generateInviteCode}
+                  className="text-blue-600 text-sm font-medium hover:bg-blue-50 px-2 py-1 rounded"
+                >
+                  👥 Convidar
+                </button>
+              </div>
+            </div>
         
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -410,9 +592,11 @@ function ExpenseApp() {
         )}
 
         <div className="mt-6 p-4 bg-green-100 rounded-lg">
-          <p className="text-green-800 font-medium text-center">✅ Sistema de Compartilhamento Ativo!</p>
+          <p className="text-green-800 font-medium text-center">
+            {connected ? '✅ Sistema de Compartilhamento Ativo!' : '📱 Modo Offline'}
+          </p>
           <p className="text-green-600 text-sm text-center mt-1">
-            Despesas sincronizadas em tempo real
+            {connected ? 'Despesas sincronizadas em tempo real' : 'Sincronizará quando conectar'}
           </p>
         </div>
 
@@ -423,6 +607,8 @@ function ExpenseApp() {
             onClick={() => setShowActionMenu(null)}
           />
         )}
+      </>
+      )}
       </div>
     </div>
   )
