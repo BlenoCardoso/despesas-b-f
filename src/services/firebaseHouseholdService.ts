@@ -9,7 +9,8 @@ import {
   where, 
   serverTimestamp,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Household } from '../types/firebase-schema';
@@ -180,24 +181,40 @@ export class FirebaseHouseholdService {
   // Ingressar na household via código
   async joinHouseholdByCode(inviteCode: string, userId: string): Promise<string | null> {
     try {
+      console.log('🔍 Buscando household com código:', inviteCode)
+      
       const q = query(
         collection(db, 'households'),
         where('inviteCode', '==', inviteCode)
       );
 
       const querySnapshot = await getDocs(q);
+      console.log('📊 Households encontradas:', querySnapshot.size)
       
       if (!querySnapshot.empty) {
         const householdDoc = querySnapshot.docs[0];
         const householdId = householdDoc.id;
+        const householdData = householdDoc.data();
         
+        console.log('🏠 Household encontrada:', householdId, householdData.name)
+        
+        // Verificar se usuário já é membro
+        if (householdData.members && householdData.members.includes(userId)) {
+          console.log('👤 Usuário já é membro desta household')
+          return householdId;
+        }
+        
+        console.log('➕ Adicionando usuário à household')
         await this.addMemberToHousehold(householdId, userId);
+        console.log('✅ Usuário adicionado com sucesso')
+        
         return householdId;
       }
       
+      console.log('❌ Código não encontrado')
       return null;
     } catch (error) {
-      console.error('Erro ao ingressar na household por código:', error);
+      console.error('❌ Erro ao ingressar na household por código:', error);
       throw error;
     }
   }
@@ -205,13 +222,34 @@ export class FirebaseHouseholdService {
   // Métodos auxiliares para gerenciar a relação user-household
   private async addUserToHousehold(userId: string, householdId: string): Promise<void> {
     try {
+      console.log('👤 Adicionando household ao usuário:', userId)
+      
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        households: arrayUnion(householdId),
-        updatedAt: serverTimestamp()
-      });
+      
+      // Verificar se documento do usuário existe
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log('👤 Criando documento do usuário')
+        // Criar documento do usuário se não existir
+        await setDoc(userRef, {
+          id: userId,
+          households: [householdId],
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp()
+        });
+      } else {
+        console.log('👤 Atualizando documento existente do usuário')
+        // Atualizar documento existente
+        await updateDoc(userRef, {
+          households: arrayUnion(householdId),
+          updatedAt: serverTimestamp()
+        });
+      }
+      
+      console.log('✅ Household adicionada ao usuário com sucesso')
     } catch (error) {
-      console.error('Erro ao adicionar household ao usuário:', error);
+      console.error('❌ Erro ao adicionar household ao usuário:', error);
       throw error;
     }
   }

@@ -329,16 +329,25 @@ function ExpenseApp() {
     
     try {
       console.log('🔗 Tentando ingressar com código:', code)
+      console.log('👤 Usuário atual:', currentUser.uid)
+      
+      // Verificar se o código existe
       const householdId = await firebaseHouseholdService.joinHouseholdByCode(code, currentUser.uid)
       
       if (householdId) {
         console.log('✅ Ingressou na household:', householdId)
-        // Recarregar dados da nova household
+        
+        // Atualizar estado local
         const household = await firebaseHouseholdService.getHouseholdById(householdId)
         setCurrentHousehold(household)
         
+        // Limpar despesas antigas
+        setExpenses([])
+        
         // Reconfigurar listener para nova household
+        console.log('🔄 Reconfigurando listener para household:', householdId)
         const unsubscribe = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
+          console.log('📡 Novas despesas recebidas:', expensesData.length)
           const adaptedExpenses = expensesData.map(exp => ({
             ...exp,
             title: exp.description,
@@ -348,16 +357,31 @@ function ExpenseApp() {
             isPaid: Math.random() > 0.3
           }))
           setExpenses(adaptedExpenses)
+          setConnected(true)
         })
         
         setShowJoinModal(false)
-        alert('✅ Você ingressou na household com sucesso!')
+        alert('✅ Você ingressou na household com sucesso! Agora você pode ver e gerenciar as despesas compartilhadas.')
+        
+        // Forçar reload da página para garantir que tudo está sincronizado
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+        
       } else {
-        alert('❌ Código inválido ou expirado')
+        console.log('❌ Código não encontrado ou inválido')
+        alert('❌ Código inválido, expirado ou já usado. Solicite um novo código.')
       }
     } catch (error) {
       console.error('❌ Erro ao ingressar:', error)
-      alert('❌ Erro ao ingressar. Verifique o código e tente novamente.')
+      
+      // Log detalhado do erro
+      if (error instanceof Error) {
+        console.error('Mensagem do erro:', error.message)
+        console.error('Stack:', error.stack)
+      }
+      
+      alert('❌ Erro ao ingressar. Verifique sua conexão e tente novamente.\nSe o problema persistir, solicite um novo código.')
     }
   }
 
@@ -888,17 +912,25 @@ function JoinHouseholdModal({
 }) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (code.trim().length !== 6) {
-      alert('O código deve ter 6 caracteres')
+      setError('O código deve ter 6 caracteres')
       return
     }
     
     setLoading(true)
-    await onJoin(code.trim().toUpperCase())
-    setLoading(false)
+    setError('')
+    
+    try {
+      await onJoin(code.trim().toUpperCase())
+    } catch (err) {
+      setError('Erro ao ingressar. Tente novamente.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -916,7 +948,10 @@ function JoinHouseholdModal({
             <input
               type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase())
+                setError('')
+              }}
               placeholder="ABC123"
               maxLength={6}
               className="w-full p-4 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none tracking-wider"
@@ -924,12 +959,24 @@ function JoinHouseholdModal({
             <p className="text-xs text-gray-500 mt-1 text-center">
               Código de 6 caracteres (letras e números)
             </p>
+            {error && (
+              <p className="text-xs text-red-600 mt-1 text-center">
+                ⚠️ {error}
+              </p>
+            )}
           </div>
 
           <div className="bg-blue-50 rounded-lg p-3 text-sm">
             <p className="font-medium text-blue-800 mb-1">ℹ️ Como funciona:</p>
             <p className="text-blue-700">Ao ingressar, você verá todas as despesas compartilhadas em tempo real e poderá adicionar/editar junto com outros membros.</p>
           </div>
+
+          {loading && (
+            <div className="bg-yellow-50 rounded-lg p-3 text-sm text-center">
+              <p className="text-yellow-700">⏳ Conectando ao Firebase...</p>
+              <p className="text-yellow-600 text-xs mt-1">Isso pode levar alguns segundos</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <button
