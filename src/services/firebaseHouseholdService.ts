@@ -181,7 +181,7 @@ export class FirebaseHouseholdService {
   // Ingressar na household via código
   async joinHouseholdByCode(inviteCode: string, userId: string): Promise<string | null> {
     try {
-      console.log('🔍 Buscando household com código:', inviteCode)
+      console.log('🔍 Procurando casa com código:', inviteCode)
       
       const q = query(
         collection(db, 'households'),
@@ -189,22 +189,22 @@ export class FirebaseHouseholdService {
       );
 
       const querySnapshot = await getDocs(q);
-      console.log('📊 Households encontradas:', querySnapshot.size)
+      console.log('📊 Resultados encontrados:', querySnapshot.size)
       
       if (!querySnapshot.empty) {
         const householdDoc = querySnapshot.docs[0];
         const householdId = householdDoc.id;
         const householdData = householdDoc.data();
         
-        console.log('🏠 Household encontrada:', householdId, householdData.name)
+        console.log('🏠 Casa encontrada:', householdId, householdData.name)
         
         // Verificar se usuário já é membro
         if (householdData.members && householdData.members.includes(userId)) {
-          console.log('👤 Usuário já é membro desta household')
+          console.log('👤 Usuário já faz parte desta casa')
           return householdId;
         }
         
-        console.log('➕ Adicionando usuário à household')
+        console.log('➕ Adicionando usuário à casa')
         await this.addMemberToHousehold(householdId, userId);
         console.log('✅ Usuário adicionado com sucesso')
         
@@ -222,7 +222,7 @@ export class FirebaseHouseholdService {
   // Métodos auxiliares para gerenciar a relação user-household
   private async addUserToHousehold(userId: string, householdId: string): Promise<void> {
     try {
-      console.log('👤 Adicionando household ao usuário:', userId)
+      console.log('👤 Configurando usuário:', userId)
       
       const userRef = doc(db, 'users', userId);
       

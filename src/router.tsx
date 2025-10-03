@@ -55,30 +55,30 @@ function ExpenseApp() {
   const initializeDemo = async (userId: string) => {
     try {
       setLoading(true)
-      console.log('🚀 Inicializando sistema de compartilhamento...')
+      console.log('🚀 Inicializando aplicativo...')
       
       // Verificar se já existe uma household
       const households = await firebaseHouseholdService.getUserHouseholds(userId)
       let householdId: string
       
       if (households.length === 0) {
-        console.log('🏠 Criando nova household...')
+        console.log('🏠 Configurando nova casa...')
         householdId = await firebaseHouseholdService.createHousehold('Casa B&F', userId)
         
         // Criar algumas despesas demo
         await createDemoExpenses(householdId, userId)
       } else {
         householdId = households[0].id
-        console.log('🏠 Usando household existente:', householdId)
+        console.log('🏠 Carregando casa existente...')
       }
       
       const household = await firebaseHouseholdService.getHouseholdById(householdId)
       setCurrentHousehold(household)
       
       // Configurar listener em tempo real
-      console.log('🔄 Configurando sincronização em tempo real...')
+      console.log('🔄 Ativando sincronização...')
       const unsubscribe = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
-        console.log('📡 Despesas sincronizadas:', expensesData.length)
+        console.log('📡 Dados atualizados:', expensesData.length)
         // Adaptar dados Firebase para UI
         const adaptedExpenses = expensesData.map(exp => ({
           ...exp,
@@ -392,7 +392,8 @@ function ExpenseApp() {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">🔄 Conectando ao Firebase...</p>
+              <p className="text-gray-600">🔄 Carregando despesas...</p>
+              <p className="text-gray-500 text-sm mt-1">Preparando sistema compartilhado</p>
             </div>
           </div>
         ) : (
@@ -717,10 +718,10 @@ function ExpenseApp() {
 
         <div className="mt-6 p-4 bg-green-100 rounded-lg">
           <p className="text-green-800 font-medium text-center">
-            {connected ? '✅ Sistema de Compartilhamento Ativo!' : '📱 Modo Offline'}
+            {connected ? '✅ Sistema Compartilhado Ativo!' : '📱 Modo Offline'}
           </p>
           <p className="text-green-600 text-sm text-center mt-1">
-            {connected ? 'Despesas sincronizadas em tempo real' : 'Sincronizará quando conectar'}
+            {connected ? 'Despesas sincronizadas em tempo real' : 'Sincronizará quando conectar à internet'}
           </p>
         </div>
 
@@ -973,8 +974,8 @@ function JoinHouseholdModal({
 
           {loading && (
             <div className="bg-yellow-50 rounded-lg p-3 text-sm text-center">
-              <p className="text-yellow-700">⏳ Conectando ao Firebase...</p>
-              <p className="text-yellow-600 text-xs mt-1">Isso pode levar alguns segundos</p>
+              <p className="text-yellow-700">⏳ Processando convite...</p>
+              <p className="text-yellow-600 text-xs mt-1">Aguarde um momento</p>
             </div>
           )}
 
