@@ -30,6 +30,8 @@ function ExpenseApp() {
   const [sortBy, setSortBy] = useState('date') // date, amount, title
   const [showStats, setShowStats] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
   
   // Estados do Firebase
   const [expenses, setExpenses] = useState<any[]>([])  // Temporariamente any[] para compatibilidade
@@ -313,10 +315,49 @@ function ExpenseApp() {
     
     try {
       const code = await firebaseHouseholdService.generateInviteCode(currentHousehold.id)
-      alert(`Código de convite gerado: ${code}\nCompartilhe este código para convidar pessoas!`)
+      setInviteCode(code)
+      setShowInviteModal(true)
     } catch (error) {
       console.error('❌ Erro ao gerar código:', error)
       alert('Erro ao gerar código de convite')
+    }
+  }
+
+  // Ingressar via código
+  const joinByCode = async (code: string) => {
+    if (!currentUser || !code) return
+    
+    try {
+      console.log('🔗 Tentando ingressar com código:', code)
+      const householdId = await firebaseHouseholdService.joinHouseholdByCode(code, currentUser.uid)
+      
+      if (householdId) {
+        console.log('✅ Ingressou na household:', householdId)
+        // Recarregar dados da nova household
+        const household = await firebaseHouseholdService.getHouseholdById(householdId)
+        setCurrentHousehold(household)
+        
+        // Reconfigurar listener para nova household
+        const unsubscribe = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
+          const adaptedExpenses = expensesData.map(exp => ({
+            ...exp,
+            title: exp.description,
+            date: formatDate(exp.createdAt),
+            paidBy: exp.createdBy === currentUser.uid ? 'Você' : 'Parceiro',
+            splitType: 'equal',
+            isPaid: Math.random() > 0.3
+          }))
+          setExpenses(adaptedExpenses)
+        })
+        
+        setShowJoinModal(false)
+        alert('✅ Você ingressou na household com sucesso!')
+      } else {
+        alert('❌ Código inválido ou expirado')
+      }
+    } catch (error) {
+      console.error('❌ Erro ao ingressar:', error)
+      alert('❌ Erro ao ingressar. Verifique o código e tente novamente.')
     }
   }
 
@@ -334,10 +375,19 @@ function ExpenseApp() {
           <>
             <div className="flex items-center justify-between mb-6">
               <h1 className="text-3xl font-bold text-blue-800">💰 Despesas Compartilhadas</h1>
-              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                connected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {connected ? '🟢 Online' : '🔴 Offline'}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowJoinModal(true)}
+                  className="px-2 py-1 bg-orange-100 text-orange-600 rounded text-xs font-medium hover:bg-orange-200"
+                  title="Ingressar em outra household"
+                >
+                  🔗 Entrar
+                </button>
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  connected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                }`}>
+                  {connected ? '🟢 Online' : '🔴 Offline'}
+                </div>
               </div>
             </div>
             
@@ -591,6 +641,56 @@ function ExpenseApp() {
           />
         )}
 
+        {/* Modal de Convite Gerado */}
+        {showInviteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">🎉 Convite Gerado!</h3>
+                <p className="text-gray-600 text-sm mb-4">Compartilhe este código para convidar pessoas:</p>
+                
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-3xl font-bold text-blue-600 tracking-wider">{inviteCode}</p>
+                </div>
+                
+                <div className="text-left bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                  <p className="font-medium text-gray-700">Como usar:</p>
+                  <p className="text-gray-600">1. Compartilhe o código acima</p>
+                  <p className="text-gray-600">2. A pessoa deve clicar em "🔗 Entrar"</p>
+                  <p className="text-gray-600">3. Inserir o código e confirmar</p>
+                  <p className="text-gray-600">4. Pronto! Despesas compartilhadas ao vivo!</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteCode)
+                    alert('Código copiado!')
+                  }}
+                  className="py-2 bg-blue-600 text-white rounded-lg font-medium text-sm"
+                >
+                  📋 Copiar
+                </button>
+                <button
+                  onClick={() => setShowInviteModal(false)}
+                  className="py-2 border border-gray-300 text-gray-700 rounded-lg font-medium text-sm"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Ingressar via Código */}
+        {showJoinModal && (
+          <JoinHouseholdModal 
+            onJoin={joinByCode}
+            onClose={() => setShowJoinModal(false)}
+          />
+        )}
+
         <div className="mt-6 p-4 bg-green-100 rounded-lg">
           <p className="text-green-800 font-medium text-center">
             {connected ? '✅ Sistema de Compartilhamento Ativo!' : '📱 Modo Offline'}
@@ -770,6 +870,82 @@ function AddExpenseModal({
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
             >
               {isEditing ? '💾 Salvar Alterações' : '➕ Adicionar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Modal para ingressar via código
+function JoinHouseholdModal({ 
+  onJoin, 
+  onClose 
+}: { 
+  onJoin: (code: string) => void
+  onClose: () => void 
+}) {
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (code.trim().length !== 6) {
+      alert('O código deve ter 6 caracteres')
+      return
+    }
+    
+    setLoading(true)
+    await onJoin(code.trim().toUpperCase())
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="text-center">
+          <h3 className="text-xl font-bold text-gray-800 mb-2">🔗 Ingressar na Household</h3>
+          <p className="text-gray-600 text-sm mb-4">
+            Digite o código de 6 dígitos que você recebeu:
+          </p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="ABC123"
+              maxLength={6}
+              className="w-full p-4 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none tracking-wider"
+            />
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              Código de 6 caracteres (letras e números)
+            </p>
+          </div>
+
+          <div className="bg-blue-50 rounded-lg p-3 text-sm">
+            <p className="font-medium text-blue-800 mb-1">ℹ️ Como funciona:</p>
+            <p className="text-blue-700">Ao ingressar, você verá todas as despesas compartilhadas em tempo real e poderá adicionar/editar junto com outros membros.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-3 border border-gray-300 text-gray-700 rounded-lg font-medium"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="py-3 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50"
+              disabled={loading || code.trim().length !== 6}
+            >
+              {loading ? '⏳ Ingressando...' : '🚀 Ingressar'}
             </button>
           </div>
         </form>
