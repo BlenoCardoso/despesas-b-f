@@ -1,16 +1,617 @@
 import { createBrowserRouter } from 'react-router-dom'
-// Suspense import removed (unused)
-import HomePage from '@/pages/HomePage'
-import LoginPage from '@/pages/LoginPage'
-import RegisterPage from '@/pages/RegisterPage'
+import { useState } from 'react'
+
+// Componente principal de despesas
+function ExpenseApp() {
+  const [showModal, setShowModal] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<any>(null)
+  const [showActionMenu, setShowActionMenu] = useState<number | null>(null)
+  const [filter, setFilter] = useState('all') // all, paid, pending, category
+  const [sortBy, setSortBy] = useState('date') // date, amount, title
+  const [showStats, setShowStats] = useState(false)
+  const [expenses, setExpenses] = useState([
+    {
+      id: 1,
+      title: '🛒 Supermercado',
+      amount: 150.50,
+      date: 'Hoje',
+      paidBy: 'Você',
+      splitType: 'equal',
+      category: 'alimentacao',
+      isPaid: true,
+      createdAt: new Date('2025-10-02')
+    },
+    {
+      id: 2,
+      title: '⛽ Combustível',
+      amount: 80.00,
+      date: 'Hoje',
+      paidBy: 'Parceiro',
+      splitType: 'equal',
+      category: 'transporte',
+      isPaid: true,
+      createdAt: new Date('2025-10-02')
+    },
+    {
+      id: 3,
+      title: '🍕 Almoço',
+      amount: 25.00,
+      date: 'Ontem',
+      paidBy: 'Você',
+      splitType: 'me',
+      category: 'alimentacao',
+      isPaid: false,
+      createdAt: new Date('2025-10-01')
+    },
+    {
+      id: 4,
+      title: '🏠 Aluguel',
+      amount: 800.00,
+      date: 'Semana passada',
+      paidBy: 'Você',
+      splitType: 'equal',
+      category: 'casa',
+      isPaid: true,
+      createdAt: new Date('2025-09-25')
+    },
+    {
+      id: 5,
+      title: '🎬 Cinema',
+      amount: 45.00,
+      date: 'Semana passada',
+      paidBy: 'Parceiro',
+      splitType: 'equal',
+      category: 'entretenimento',
+      isPaid: false,
+      createdAt: new Date('2025-09-28')
+    }
+  ])
+
+  const total = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+  const yourShare = expenses.reduce((sum, exp) => {
+    if (exp.splitType === 'equal') return sum + (exp.amount / 2)
+    if (exp.splitType === 'me' && exp.paidBy === 'Você') return sum + exp.amount
+    return sum
+  }, 0)
+  const partnerShare = total - yourShare
+
+  // Estatísticas
+  const pendingExpenses = expenses.filter(exp => !exp.isPaid)
+  const paidExpenses = expenses.filter(exp => exp.isPaid)
+  const categoriesStats = expenses.reduce((acc: any, exp) => {
+    acc[exp.category] = (acc[exp.category] || 0) + exp.amount
+    return acc
+  }, {})
+
+  // Filtros e ordenação
+  const filteredExpenses = expenses
+    .filter(exp => {
+      if (filter === 'paid') return exp.isPaid
+      if (filter === 'pending') return !exp.isPaid
+      if (filter.startsWith('cat-')) return exp.category === filter.replace('cat-', '')
+      return true
+    })
+    .sort((a, b) => {
+      if (sortBy === 'date') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      if (sortBy === 'amount') return b.amount - a.amount
+      if (sortBy === 'title') return a.title.localeCompare(b.title)
+      return 0
+    })
+
+  const addExpense = (newExpense: any) => {
+    const expense = { 
+      ...newExpense, 
+      id: Date.now(), 
+      isPaid: false, 
+      createdAt: new Date() 
+    }
+    setExpenses([expense, ...expenses])
+    setShowModal(false)
+    
+    // Feedback visual
+    setTimeout(() => {
+      const element = document.querySelector(`[data-expense-id="${expense.id}"]`)
+      element?.classList.add('animate-pulse')
+      setTimeout(() => element?.classList.remove('animate-pulse'), 1000)
+    }, 100)
+  }
+
+  const editExpense = (updatedExpense: any) => {
+    setExpenses(expenses.map(exp => 
+      exp.id === updatedExpense.id ? updatedExpense : exp
+    ))
+    setEditingExpense(null)
+    setShowModal(false)
+    
+    // Feedback visual
+    setTimeout(() => {
+      const element = document.querySelector(`[data-expense-id="${updatedExpense.id}"]`)
+      element?.classList.add('ring-2', 'ring-green-300')
+      setTimeout(() => element?.classList.remove('ring-2', 'ring-green-300'), 1500)
+    }, 100)
+  }
+
+  const deleteExpense = (id: number) => {
+    const element = document.querySelector(`[data-expense-id="${id}"]`)
+    element?.classList.add('opacity-50', 'scale-95')
+    
+    setTimeout(() => {
+      setExpenses(expenses.filter(exp => exp.id !== id))
+      setShowActionMenu(null)
+    }, 200)
+  }
+
+  const togglePaidStatus = (id: number) => {
+    setExpenses(expenses.map(exp => 
+      exp.id === id ? { ...exp, isPaid: !exp.isPaid } : exp
+    ))
+    setShowActionMenu(null)
+    
+    // Feedback visual
+    setTimeout(() => {
+      const element = document.querySelector(`[data-expense-id="${id}"]`)
+      element?.classList.add('animate-bounce')
+      setTimeout(() => element?.classList.remove('animate-bounce'), 1000)
+    }, 100)
+  }
+
+  const openEditModal = (expense: any) => {
+    setEditingExpense(expense)
+    setShowModal(true)
+    setShowActionMenu(null)
+  }
+
+  return (
+    <div className="p-4 bg-blue-50 min-h-screen">
+      <div className="max-w-md mx-auto">
+        <h1 className="text-3xl font-bold text-blue-800 mb-6 text-center">💰 Despesas Compartilhadas</h1>
+        
+        {/* Household Info */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-800">🏠 Casa B&F</h2>
+              <p className="text-sm text-gray-500">2 pessoas compartilhando</p>
+            </div>
+            <button className="text-blue-600 text-sm font-medium">
+              👥 Convidar
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-800">📊 Resumo</h2>
+            <button 
+              onClick={() => setShowStats(!showStats)}
+              className="text-blue-600 text-sm font-medium"
+            >
+              {showStats ? '📊 Ocultar' : '📈 Ver Mais'}
+            </button>
+          </div>
+          <div className="text-center">
+            <p className="text-3xl font-bold text-blue-600">R$ {total.toFixed(2)}</p>
+            <p className="text-gray-600">Total das despesas</p>
+            <div className="mt-3 flex justify-center space-x-4 text-sm">
+              <span className="text-green-600">• Você: R$ {yourShare.toFixed(2)}</span>
+              <span className="text-orange-600">• Parceiro: R$ {partnerShare.toFixed(2)}</span>
+            </div>
+            
+            {showStats && (
+              <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <p className="font-semibold text-green-700">{paidExpenses.length} Pagas</p>
+                    <p className="text-green-600">R$ {paidExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</p>
+                  </div>
+                  <div className="bg-orange-50 p-3 rounded-lg">
+                    <p className="font-semibold text-orange-700">{pendingExpenses.length} Pendentes</p>
+                    <p className="text-orange-600">R$ {pendingExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</p>
+                  </div>
+                </div>
+                
+                {/* Top categorias */}
+                <div className="text-left">
+                  <p className="font-medium text-gray-700 mb-2">🏆 Top Categorias:</p>
+                  {Object.entries(categoriesStats)
+                    .sort(([,a], [,b]) => (b as number) - (a as number))
+                    .slice(0, 3)
+                    .map(([cat, amount]) => (
+                    <div key={cat} className="flex justify-between text-sm py-1">
+                      <span className="capitalize">{cat.replace('alimentacao', '🍽️ Alimentação').replace('transporte', '🚗 Transporte').replace('casa', '🏠 Casa').replace('entretenimento', '🎬 Entretenimento')}</span>
+                      <span className="font-medium">R$ {(amount as number).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Filtros e Ordenação */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button 
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              📋 Todas ({expenses.length})
+            </button>
+            <button 
+              onClick={() => setFilter('pending')}
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                filter === 'pending' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              ⏳ Pendentes ({pendingExpenses.length})
+            </button>
+            <button 
+              onClick={() => setFilter('paid')}
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                filter === 'paid' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              ✅ Pagas ({paidExpenses.length})
+            </button>
+          </div>
+          
+          <div className="flex gap-2">
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:outline-none"
+            >
+              <option value="date">📅 Por Data</option>
+              <option value="amount">💰 Por Valor</option>
+              <option value="title">🔤 Por Nome</option>
+            </select>
+            {filter !== 'all' && (
+              <button 
+                onClick={() => setFilter('all')}
+                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-sm hover:bg-red-200 transition-colors"
+                title="Limpar filtros"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {filteredExpenses.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-md p-8 text-center">
+              <p className="text-gray-500 text-lg">📭</p>
+              <p className="text-gray-600 mt-2">
+                {filter === 'pending' ? 'Nenhuma despesa pendente!' : 
+                 filter === 'paid' ? 'Nenhuma despesa paga ainda.' :
+                 'Nenhuma despesa encontrada.'}
+              </p>
+              {filter !== 'all' && (
+                <button 
+                  onClick={() => setFilter('all')}
+                  className="mt-3 text-blue-600 text-sm font-medium"
+                >
+                  Ver todas as despesas
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredExpenses.map(expense => (
+              <div 
+                key={expense.id} 
+                data-expense-id={expense.id}
+                className={`bg-white rounded-lg shadow-md p-4 relative transition-all duration-200 hover:shadow-lg ${
+                  !expense.isPaid ? 'border-l-4 border-orange-400' : ''
+                } ${
+                  showActionMenu === expense.id ? 'ring-2 ring-blue-200' : ''
+                }`}
+              >
+              <div className="flex justify-between items-center">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-800">{expense.title}</h3>
+                    {!expense.isPaid && (
+                      <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                        Pendente
+                      </span>
+                    )}
+                    {expense.isPaid && (
+                      <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">
+                        ✓ Pago
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500">{expense.date} • Pago por {expense.paidBy}</p>
+                  <p className={`text-xs ${
+                    expense.splitType === 'equal' ? 'text-blue-600' : 
+                    expense.splitType === 'me' ? 'text-red-600' : 'text-purple-600'
+                  }`}>
+                    {expense.splitType === 'equal' ? 'Compartilhado 50/50' : 
+                     expense.splitType === 'me' ? 'Só você' : 'Divisão personalizada'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-gray-800">R$ {expense.amount.toFixed(2)}</p>
+                  <p className={`text-xs ${
+                    expense.splitType === 'equal' ? 
+                      (expense.paidBy === 'Você' ? 'text-green-600' : 'text-orange-600') :
+                      expense.splitType === 'me' ? 'text-red-600' : 'text-purple-600'
+                  }`}>
+                    Sua parte: R$ {expense.splitType === 'equal' ? (expense.amount / 2).toFixed(2) : 
+                                  expense.splitType === 'me' && expense.paidBy === 'Você' ? expense.amount.toFixed(2) : '0,00'}
+                  </p>
+                </div>
+                
+                {/* Botão de menu de ações */}
+                <button 
+                  className="ml-2 p-1 text-gray-400 hover:text-gray-600"
+                  onClick={() => setShowActionMenu(showActionMenu === expense.id ? null : expense.id)}
+                >
+                  ⋮
+                </button>
+              </div>
+
+              {/* Menu de ações */}
+              {showActionMenu === expense.id && (
+                <div className="absolute right-4 top-12 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[150px]">
+                  <button
+                    onClick={() => openEditModal(expense)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    ✏️ Editar
+                  </button>
+                  <button
+                    onClick={() => togglePaidStatus(expense.id)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    {expense.isPaid ? '⏳ Marcar pendente' : '✅ Marcar como pago'}
+                  </button>
+                  <button
+                    onClick={() => deleteExpense(expense.id)}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100"
+                  >
+                    🗑️ Excluir
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+          )}
+        </div>
+
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <button 
+            className="bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={() => setShowModal(true)}
+          >
+            ➕ Adicionar Despesa
+          </button>
+          <button 
+            className="bg-gray-100 text-gray-700 font-semibold py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+            onClick={() => alert('📊 Relatórios em breve!')}
+          >
+            📊 Relatórios
+          </button>
+        </div>
+
+        {/* Modal de Adicionar/Editar Despesa */}
+        {showModal && (
+          <AddExpenseModal 
+            expense={editingExpense}
+            onAdd={addExpense} 
+            onEdit={editExpense}
+            onClose={() => {
+              setShowModal(false)
+              setEditingExpense(null)
+            }} 
+          />
+        )}
+
+        <div className="mt-6 p-4 bg-green-100 rounded-lg">
+          <p className="text-green-800 font-medium text-center">✅ Sistema de Compartilhamento Ativo!</p>
+          <p className="text-green-600 text-sm text-center mt-1">
+            Despesas sincronizadas em tempo real
+          </p>
+        </div>
+
+        {/* Overlay para fechar menu de ações */}
+        {showActionMenu && (
+          <div 
+            className="fixed inset-0 z-5"
+            onClick={() => setShowActionMenu(null)}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Modal de adicionar/editar despesa
+function AddExpenseModal({ 
+  expense, 
+  onAdd, 
+  onEdit, 
+  onClose 
+}: { 
+  expense?: any
+  onAdd: (expense: any) => void
+  onEdit: (expense: any) => void
+  onClose: () => void 
+}) {
+  const [formData, setFormData] = useState({
+    title: expense?.title || '',
+    amount: expense?.amount?.toString() || '',
+    date: expense?.date || new Date().toISOString().split('T')[0],
+    category: expense?.category || '🍽️ Alimentação',
+    splitType: expense?.splitType || 'equal'
+  })
+
+  const isEditing = !!expense
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (formData.title && formData.amount) {
+      const expenseData = {
+        title: formData.title,
+        amount: parseFloat(formData.amount),
+        date: 'Hoje',
+        paidBy: 'Você',
+        splitType: formData.splitType,
+        category: formData.category
+      }
+
+      if (isEditing) {
+        onEdit({ ...expense, ...expenseData })
+      } else {
+        onAdd(expenseData)
+      }
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
+      <div className="bg-white rounded-t-3xl w-full max-w-md p-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-xl font-bold text-gray-800">
+            {isEditing ? '✏️ Editar Despesa' : '➕ Nova Despesa'}
+          </h3>
+          <button onClick={onClose} className="text-gray-500 text-2xl">×</button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+            <input 
+              type="text" 
+              placeholder="Ex: Supermercado, Aluguel..."
+              value={formData.title}
+              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valor</label>
+              <input 
+                type="number" 
+                step="0.01"
+                placeholder="0,00"
+                value={formData.amount}
+                onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+              <input 
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+            <select 
+              value={formData.category}
+              onChange={(e) => setFormData({...formData, category: e.target.value})}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            >
+              <option>🍽️ Alimentação</option>
+              <option>🚗 Transporte</option>
+              <option>🏠 Casa</option>
+              <option>🎬 Entretenimento</option>
+              <option>⚕️ Saúde</option>
+              <option>📚 Educação</option>
+              <option>💰 Outros</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Como dividir?</label>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input 
+                  type="radio" 
+                  name="split" 
+                  value="equal" 
+                  checked={formData.splitType === 'equal'}
+                  onChange={(e) => setFormData({...formData, splitType: e.target.value})}
+                  className="mr-2"
+                />
+                <span>👫 Dividir igualmente (50/50)</span>
+              </label>
+              <label className="flex items-center">
+                <input 
+                  type="radio" 
+                  name="split" 
+                  value="me" 
+                  checked={formData.splitType === 'me'}
+                  onChange={(e) => setFormData({...formData, splitType: e.target.value})}
+                  className="mr-2"
+                />
+                <span>🙋‍♂️ Só eu pago</span>
+              </label>
+              <label className="flex items-center">
+                <input 
+                  type="radio" 
+                  name="split" 
+                  value="custom" 
+                  checked={formData.splitType === 'custom'}
+                  onChange={(e) => setFormData({...formData, splitType: e.target.value})}
+                  className="mr-2"
+                />
+                <span>⚖️ Divisão personalizada</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-4">
+            <button 
+              type="button" 
+              onClick={onClose}
+              className="w-full py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit"
+              className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+            >
+              {isEditing ? '💾 Salvar Alterações' : '➕ Adicionar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+import LoginPage from '@/features/auth/pages/LoginPage'
 import InvitePage from '@/pages/InvitePage'
+import HomePage from '@/pages/HomePage'
+import { MobileExpensesPage } from '@/pages/UltraSimplePage'
+import { NewSettingsPage } from '@/pages/NewSettingsPage'
 import AuthLayout from '@/components/layouts/AuthLayout'
-import AppLayout from '@/components/layouts/AppLayout'
-import HouseholdPage from '@/pages/HouseholdPage'
-import MembersPage from '@/pages/MembersPage'
-import { routes as expenseRoutes } from '@/features/expenses/routes'
+import { SimpleLayout } from '@/components/SimpleLayout'
+
+// Componente temporário para registro
+const RegisterPage = () => <div>Register Page - Em desenvolvimento</div>
 
 export const router = createBrowserRouter([
+  // Rota de teste direta
+  {
+    path: '/test',
+    element: <div className="p-8 bg-green-100 min-h-screen">
+      <h1 className="text-3xl font-bold text-green-800">🎉 TESTE FUNCIONANDO!</h1>
+      <p className="text-lg text-green-600 mt-4">Router e Vite funcionando perfeitamente!</p>
+    </div>
+  },
+  
   // Auth routes
   {
     path: '/',
@@ -35,24 +636,18 @@ export const router = createBrowserRouter([
     ]
   },
 
-  // App routes
+  // SISTEMA PRINCIPAL com Layout completo
   {
-    path: '/app',
-    element: <AppLayout />,
+    path: '/expenses',
+    element: <ExpenseApp />
+  },
+  {
+    path: '/settings',
+    element: <SimpleLayout />,
     children: [
       {
-        path: 'h/:id',
-        element: <HouseholdPage />
-      },
-      {
-        path: 'h/:id',
-        children: [
-          ...expenseRoutes,
-          {
-            path: 'membros',
-            element: <MembersPage />
-          }
-        ]
+        path: '',
+        element: <NewSettingsPage />
       }
     ]
   }

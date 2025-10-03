@@ -2,9 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { householdService } from '../services/householdService'
 import type { MemberRole } from '../types'
 
+// Minimal member shape returned by the legacy service
+export type HouseholdMember = { userId: string; user: { id: string; name?: string; displayName?: string; photoURL?: string } }
+
 // Hook para listar membros de uma household
 export function useHouseholdMembers(householdId: string) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<HouseholdMember[]>({
     queryKey: ['householdMembers', householdId],
     queryFn: () => householdService.listHouseholdMembers(householdId)
   })

@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { householdService } from '../services/householdService'
-import { auth } from '@/lib/firebase'
+import { authService } from '@/services/authService'
 import { Share2, Copy, RefreshCw } from 'lucide-react'
 
 interface InviteButtonProps {
@@ -47,13 +47,13 @@ export function InviteButton({ householdId }: InviteButtonProps) {
     try {
       setIsLoading(true)
 
-      const user = auth.currentUser
+      const user = authService.getCurrentUser()
       if (!user) throw new Error('Usuário não autenticado')
 
       // Criar convite
       const invite = await householdService.createInvite({
         householdId,
-        createdBy: user.uid,
+        createdBy: user.id,
         expiresInHours: parseInt(expiresIn),
         maxUses: parseInt(maxUses)
       })
@@ -70,8 +70,10 @@ export function InviteButton({ householdId }: InviteButtonProps) {
         queryKey: ['household-members', householdId]
       })
 
-    } catch (error) {
-      toast.error('Erro ao gerar convite')
+    } catch (error: any) {
+      const msg = error?.message || String(error)
+      console.error('Erro ao gerar convite', error)
+      toast.error(`Erro ao gerar convite: ${msg}`)
     } finally {
       setIsLoading(false)
     }
@@ -89,12 +91,23 @@ export function InviteButton({ householdId }: InviteButtonProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Share2 className="h-4 w-4 mr-2" />
-          Convidar
-        </Button>
-      </DialogTrigger>
+      {/* Open modal only if user is authenticated; otherwise show helpful toast */}
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="invite-open-button"
+        onClick={() => {
+          const user = authService.getCurrentUser()
+          if (!user) {
+            toast.error('Faça login para gerar convites')
+            return
+          }
+          setIsOpen(true)
+        }}
+      >
+        <Share2 className="h-4 w-4 mr-2" />
+        Convidar
+      </Button>
 
       <DialogContent>
         <DialogHeader>
@@ -154,11 +167,13 @@ export function InviteButton({ householdId }: InviteButtonProps) {
                     value={inviteCode}
                     readOnly
                     className="font-mono"
+                    data-testid="generated-invite-code"
                   />
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={() => copyToClipboard(inviteCode)}
+                    data-testid="copy-invite-code"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -173,11 +188,13 @@ export function InviteButton({ householdId }: InviteButtonProps) {
                     value={inviteLink}
                     readOnly
                     className="font-mono text-xs"
+                    data-testid="generated-invite-link"
                   />
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={() => inviteLink && copyToClipboard(inviteLink)}
+                    data-testid="copy-invite-link"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -191,14 +208,15 @@ export function InviteButton({ householdId }: InviteButtonProps) {
           {!inviteCode ? (
             // Botão de gerar
             <Button
-              onClick={generateInvite}
-              disabled={isLoading}
-            >
-              {isLoading && (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Gerar Convite
-            </Button>
+                onClick={generateInvite}
+                disabled={isLoading}
+                data-testid="generate-invite-button"
+              >
+                {isLoading && (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Gerar Convite
+              </Button>
           ) : (
             // Botão de novo convite
             <Button

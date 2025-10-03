@@ -18,14 +18,19 @@ export function useHousehold(householdId?: string) {
     const fetchHousehold = async () => {
       try {
         setLoading(true)
+        setError(null)
+        
+        console.log('🏠 Buscando household:', householdId)
+        
         const household = await DatabaseMiddleware.get({
           collection: 'households',
           id: householdId
         }) as unknown as Household
 
+        console.log('📊 Household encontrada:', household)
         setData(household)
-        setError(null)
       } catch (err) {
+        console.error('❌ Erro ao buscar household:', err)
         setError(err as Error)
         setData(null)
       } finally {

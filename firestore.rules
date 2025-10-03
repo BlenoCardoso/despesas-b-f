@@ -11,100 +11,60 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Verifica se o usuário é membro do household
-    function isMember(householdId) {
+    function isHouseholdMember(householdId) {
       return isSignedIn() && 
-        exists(/databases/$(database)/documents/households/$(householdId)/members/$(request.auth.uid));
+        exists(/databases/$(database)/documents/households/$(householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members;
     }
 
-    // Verifica se o usuário é admin do household
-    function isAdmin(householdId) {
-      let memberDoc = get(/databases/$(database)/documents/households/$(householdId)/members/$(request.auth.uid));
-      return memberDoc != null && memberDoc.data.role == 'admin';
-    }
-
-    // Verifica campos de auditoria e feature flags
-    function hasValidAuditFields() {
-      let requiredFields = [
-        'createdAt', 
-        'createdBy',
-        'version'
-      ];
-      
-      return request.resource.data.keys().hasAll(requiredFields) &&
-        request.resource.data.createdBy == request.auth.uid &&
-        (
-          resource == null || 
-          (
-            request.resource.data.updatedAt == request.time &&
-            request.resource.data.updatedBy == request.auth.uid &&
-            request.resource.data.version == resource.data.version + 1
-          )
-        );
-    }
-
-    function hasValidFeatureFlags() {
-      return !('attachments' in request.resource.data) || 
-        get(/databases/$(database)/documents/config/features).data.attachmentsEnabled == true;
-    }
-
-    // Regras para households
-    match /households/{householdId} {
-      allow read: if isMember(householdId);
-      allow create: if isSignedIn() && hasValidAuditFields();
-      allow update: if isAdmin(householdId) && hasValidAuditFields();
-      allow delete: if isAdmin(householdId);
-
-      // Members subcollection
-      match /members/{memberId} {
-        allow read: if isMember(householdId);
-        allow create: if isAdmin(householdId) || 
-          (isSignedIn() && memberId == request.auth.uid && resource == null);
-        allow update: if isAdmin(householdId) || 
-          (memberId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
-        allow delete: if isAdmin(householdId);
-      }
-
-      // Expenses subcollection
-      match /expenses/{expenseId} {
-        allow read: if isMember(householdId);
-        allow create: if isMember(householdId) && 
-          hasValidAuditFields() && 
-          hasValidFeatureFlags() &&
-          request.resource.data.createdBy == request.auth.uid;
-        allow update: if isMember(householdId) && 
-          hasValidAuditFields() &&
-          hasValidFeatureFlags() &&
-          (resource.data.createdBy == request.auth.uid || isAdmin(householdId));
-        allow delete: if isMember(householdId) && 
-          (resource.data.createdBy == request.auth.uid || isAdmin(householdId));
-      }
-
-      // Categories subcollection
-      match /categories/{categoryId} {
-        allow read: if isMember(householdId);
-        allow write: if isAdmin(householdId) && hasValidAuditFields();
-      }
-
-      // Invites subcollection
-      match /invites/{inviteId} {
-        allow read: if true; // Permite verificar convite pelo link
-        allow create: if isAdmin(householdId) && hasValidAuditFields();
-        allow delete: if isAdmin(householdId);
-      }
-    }
-
-    // Users (perfis públicos)
+    // Users - permitir leitura global e escrita do próprio perfil
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isCurrentUser(userId) && hasValidAuditFields();
+      allow create, update: if isCurrentUser(userId);
       allow delete: if false;
     }
 
-    // Feature flags globais
-    match /config/features {
-      allow read: if isSignedIn();
+    // Households - acesso baseado em membership
+    match /households/{householdId} {
+      allow read: if isHouseholdMember(householdId);
+      allow create: if isSignedIn();
+      allow update: if isHouseholdMember(householdId);
+      allow delete: if isSignedIn() && 
+        resource.data.ownerId == request.auth.uid;
+    }
+
+    // Expenses - acesso baseado em membership da household
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+      allow create: if isSignedIn() && 
+        isHouseholdMember(request.resource.data.householdId);
+      allow update: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+      allow delete: if isSignedIn() && 
+        (isHouseholdMember(resource.data.householdId) && 
+         resource.data.createdBy == request.auth.uid);
+    }
+
+    // Invites - acesso público para leitura, criação por membros
+    match /invites/{inviteId} {
+      allow read: if true; // Público para permitir aceitar convites
+      allow create: if isSignedIn() && 
+        isHouseholdMember(request.resource.data.householdId);
+      allow update: if isSignedIn(); // Permitir marcar como usado
+      allow delete: if isSignedIn() && 
+        request.auth.uid == resource.data.createdBy;
+    }
+
+    // Permitir acesso de leitura para configurações globais
+    match /config/{configId} {
+      allow read: if true;
       allow write: if false;
+    }
+
+    // Negar acesso a qualquer outra coleção não especificada
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

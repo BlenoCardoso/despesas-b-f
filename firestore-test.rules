@@ -1,0 +1,69 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Funções auxiliares
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCurrentUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // REGRAS TEMPORÁRIAS MAIS PERMISSIVAS PARA DEPURAÇÃO
+    
+    // Households - mais permissivo
+    match /households/{householdId} {
+      allow read, write: if isSignedIn();
+      
+      // Members subcollection - permitir qualquer usuário autenticado
+      match /members/{memberId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // Expenses subcollection
+      match /expenses/{expenseId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // Categories subcollection
+      match /categories/{categoryId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // Invites subcollection (legacy)
+      match /invites/{inviteId} {
+        allow read, write: if true; // Público para teste
+      }
+    }
+
+    // Invitations (new system) - coleção global
+    match /invitations/{invitationId} {
+      allow read, write: if true; // Público para teste
+    }
+
+    // Join Requests (new system) - coleção global
+    match /joinRequests/{requestId} {
+      allow read, write: if true; // Público para teste
+    }
+
+    // Users (perfis públicos)
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn(); // Removido hasValidAuditFields temporariamente
+      allow delete: if false;
+    }
+
+    // Feature flags globais
+    match /config/features {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Permitir acesso geral para coleções que não foram especificadas
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

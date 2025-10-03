@@ -1,4 +1,4 @@
-import { auth } from '@/lib/firebase'
+import { authService } from '@/services/authService'
 import { db } from '@/lib/db'
 import type { BaseModel } from '@/types'
 import type { PaginationOptions, PaginatedResult } from '@/types/pagination'
@@ -18,9 +18,9 @@ export class DatabaseMiddleware {
     // firebase auth isn't present but the app stores a current user in the local DB.
     let uid: string | undefined
     try {
-      const firebaseUser = (auth && (auth as any).currentUser) ? (auth as any).currentUser : null
-      if (firebaseUser && firebaseUser.uid) {
-        uid = firebaseUser.uid
+      const firebaseUser = authService.getCurrentUser()
+      if (firebaseUser && firebaseUser.id) {
+        uid = firebaseUser.id
       }
     } catch (e) {
       // ignore
@@ -98,7 +98,7 @@ export class DatabaseMiddleware {
     operation: DatabaseOperation<T>,
     type: 'create' | 'update'
   ): DatabaseOperation<T> {
-    const user = auth.currentUser
+    const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
     const now = new Date().toISOString()
@@ -110,7 +110,7 @@ export class DatabaseMiddleware {
           ...operation.data,
           id: operation.id || crypto.randomUUID(),
           createdAt: now,
-          createdBy: user.uid,
+          createdBy: user.id,
           version: 1
         } as T
       }
@@ -121,7 +121,7 @@ export class DatabaseMiddleware {
       data: {
         ...operation.data,
         updatedAt: now,
-        updatedBy: user.uid,
+        updatedBy: user.id,
         version: (operation.data.version || 0) + 1
       } as T
     }
@@ -130,13 +130,25 @@ export class DatabaseMiddleware {
   static async create<T extends BaseModel>(
     operation: DatabaseOperation<T>
   ): Promise<string> {
-    // Se tem householdId, validar membership
+    // Get current user (used by special-case logic below)
+    const firebaseUser = authService.getCurrentUser()
+
+    // Special-case: allow creating a members record when the user is creating
+    // their own membership (join via invite). The Firestore rules allow a user
+    // to create their own members/{uid} document when memberId == request.auth.uid
+    // and resource == null. Our middleware otherwise checks membership and would
+    // block this; so detect that case and skip membership validation.
     if ('householdId' in operation.data) {
-      const hasAccess = await this.validateMembership(
-        (operation.data as any).householdId
-      )
-      if (!hasAccess) {
-        throw new Error('Sem permissão para acessar este household')
+      const maybeMemberCollection = String(operation.collection).toLowerCase() === 'members'
+      const creatingOwnMember = maybeMemberCollection && firebaseUser && ((operation.data as any).userId === firebaseUser.id || (operation.data as any).id === firebaseUser.id)
+
+      if (!creatingOwnMember) {
+        const hasAccess = await this.validateMembership(
+          (operation.data as any).householdId
+        )
+        if (!hasAccess) {
+          throw new Error('Sem permissão para acessar este household')
+        }
       }
     }
 
@@ -208,12 +220,12 @@ export class DatabaseMiddleware {
     }
 
     // Soft delete
-    const user = auth.currentUser
+    const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
     await db.table(operation.collection).update(operation.id, {
       deletedAt: new Date().toISOString(),
-      deletedBy: user.uid,
+      deletedBy: user.id,
       version: doc.version + 1
     })
   }

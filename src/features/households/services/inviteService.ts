@@ -1,5 +1,5 @@
 import { query, where, getDocs, collection } from 'firebase/firestore'
-import { firestore } from '@/lib/firebase'
+import { db as firestore } from '@/config/firebase'
 import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
 import type { BaseModel } from '@/types'
 
@@ -95,66 +95,169 @@ export class InviteService {
     householdId?: string
     error?: string
   }> {
-    // Buscar convite
-    const inviteQuery = query(
-      collection(firestore, 'invites'),
-      where('code', '==', code.toUpperCase())
-    )
-    const snapshot = await getDocs(inviteQuery)
-
-    // Convite não encontrado
-    if (snapshot.empty) {
-      return { 
-        valid: false,
-        error: 'Código inválido'
+    try {
+      console.log('🔍 InviteService.validate - código:', code)
+      
+      if (!code || code.trim() === '') {
+        console.log('❌ Código vazio')
+        return { 
+          valid: false,
+          error: 'Código não fornecido'
+        }
       }
-    }
+      
+      const normalizedCode = code.toUpperCase().trim()
+      console.log('🔄 Código normalizado:', normalizedCode)
+      
+      // Buscar convite na coleção correta 'invitations'
+      const inviteQuery = query(
+        collection(firestore, 'invitations'),
+        where('code', '==', normalizedCode)
+      )
+      
+      console.log('📡 Executando query no Firestore...')
+      const snapshot = await getDocs(inviteQuery)
+      
+      console.log('📊 Resultados encontrados:', snapshot.size)
 
-  const invite = snapshot.docs[0].data() as Invite
+      // Convite não encontrado
+      if (snapshot.empty) {
+        console.log('❌ Nenhum convite encontrado para o código:', normalizedCode)
+        console.log('🔍 Verificando também na coleção invites (legacy)...')
+        
+        // Tentar buscar na coleção legacy
+        const legacyQuery = query(
+          collection(firestore, 'invites'),
+          where('code', '==', normalizedCode)
+        )
+        
+        const legacySnapshot = await getDocs(legacyQuery)
+        console.log('📊 Resultados legacy encontrados:', legacySnapshot.size)
+        
+        if (legacySnapshot.empty) {
+          return { 
+            valid: false,
+            error: 'Código inválido ou não encontrado'
+          }
+        }
+        
+        // Usar resultado legacy
+        const legacyInvite = legacySnapshot.docs[0].data() as any
+        console.log('📋 Dados do convite legacy encontrado:', legacyInvite)
+        
+        if (!legacyInvite.householdId) {
+          return {
+            valid: false,
+            error: 'Convite mal formado'
+          }
+        }
+        
+        return {
+          valid: true,
+          householdId: legacyInvite.householdId
+        }
+      }
 
-    // Verificar expiração
-    if (new Date(invite.expiresAt) < new Date()) {
+      const invite = snapshot.docs[0].data() as any
+      console.log('📋 Dados do convite encontrado:', invite)
+
+      // Verificar se tem os campos necessários
+      if (!invite.householdId) {
+        console.log('❌ Convite sem householdId')
+        return {
+          valid: false,
+          error: 'Convite mal formado'
+        }
+      }
+
+      // Verificar expiração (se existir)
+      if (invite.expiresAt) {
+        const expirationDate = invite.expiresAt.toDate ? invite.expiresAt.toDate() : new Date(invite.expiresAt)
+        if (expirationDate < new Date()) {
+          console.log('❌ Convite expirado')
+          return {
+            valid: false,
+            error: 'Convite expirado'
+          }
+        }
+      }
+
+      // Verificar usos
+      const uses = invite.uses || 0
+      const maxUses = invite.maxUses || 1
+      if (uses >= maxUses) {
+        console.log('❌ Convite já utilizado')
+        return {
+          valid: false,
+          error: 'Convite já utilizado'
+        }
+      }
+
+      console.log('✅ Convite válido!')
+      return {
+        valid: true,
+        householdId: invite.householdId
+      }
+    } catch (error) {
+      console.error('💥 Erro na validação do convite:', error)
       return {
         valid: false,
-        error: 'Convite expirado'
+        error: `Erro interno na validação: ${error}`
       }
-    }
-
-    // Verificar usos
-    if (invite.uses >= invite.maxUses) {
-      return {
-        valid: false,
-        error: 'Convite já utilizado'
-      }
-    }
-
-    return {
-      valid: true,
-      householdId: invite.householdId
     }
   }
 
   // Usar convite
   static async use(code: string): Promise<void> {
-    // Buscar convite
-    const inviteQuery = query(
-      collection(firestore, 'invites'),
-      where('code', '==', code.toUpperCase())
-    )
-    const snapshot = await getDocs(inviteQuery)
-
-    if (!snapshot.empty) {
-      const invite = snapshot.docs[0].data() as Invite
+    try {
+      console.log('🔄 InviteService.use - código:', code)
       
-      // Atualizar contador de usos
-  await DatabaseMiddleware.update<any>({
-        collection: 'invites',
-        id: snapshot.docs[0].id,
-        data: {
-          ...invite,
-          uses: invite.uses + 1
-        }
-      })
+      const normalizedCode = code.toUpperCase().trim()
+      
+      // Buscar convite na coleção correta 'invitations'
+      const inviteQuery = query(
+        collection(firestore, 'invitations'),
+        where('code', '==', normalizedCode)
+      )
+      const snapshot = await getDocs(inviteQuery)
+
+      if (!snapshot.empty) {
+        console.log('📝 Atualizando uso do convite na coleção invitations')
+        const invite = snapshot.docs[0].data() as any
+        
+        // Atualizar contador de usos usando updateDoc em vez de DatabaseMiddleware
+        const { updateDoc, doc } = await import('firebase/firestore')
+        await updateDoc(doc(firestore, 'invitations', snapshot.docs[0].id), {
+          uses: (invite.uses || 0) + 1
+        })
+        console.log('✅ Convite usado com sucesso!')
+        return
+      }
+      
+      // Tentar buscar na coleção legacy
+      console.log('🔍 Tentando buscar na coleção legacy invites...')
+      const legacyQuery = query(
+        collection(firestore, 'invites'),
+        where('code', '==', normalizedCode)
+      )
+      const legacySnapshot = await getDocs(legacyQuery)
+      
+      if (!legacySnapshot.empty) {
+        console.log('📝 Atualizando uso do convite na coleção legacy')
+        const legacyInvite = legacySnapshot.docs[0].data() as any
+        
+        const { updateDoc, doc } = await import('firebase/firestore')
+        await updateDoc(doc(firestore, 'invites', legacySnapshot.docs[0].id), {
+          uses: (legacyInvite.uses || 0) + 1
+        })
+        console.log('✅ Convite legacy usado com sucesso!')
+        return
+      }
+      
+      console.log('❌ Convite não encontrado para uso')
+    } catch (error) {
+      console.error('💥 Erro ao usar convite:', error)
+      throw error
     }
   }
 

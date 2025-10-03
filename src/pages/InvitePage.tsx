@@ -1,160 +1,187 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { auth } from '@/lib/firebase'
-import { DatabaseMiddleware } from '@/lib/databaseMiddleware'
-import { InviteService } from '@/features/households/services/inviteService'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useHouseholds } from '@/hooks/useHouseholds'
+import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Loader2, CheckCircle, XCircle, Users, Home } from 'lucide-react'
 import { toast } from 'sonner'
-import { DatabaseError } from '@/lib/errors'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useHousehold } from '@/features/households/hooks/useHousehold'
 
 export default function InvitePage() {
-  // Parâmetros e navegação
-  const { code = '' } = useParams()
+  const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { acceptInvite } = useHouseholds()
+  const [loading, setLoading] = useState(false)
+  const [accepted, setAccepted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Estado da página
-  const [isLoading, setIsLoading] = useState(true)
-  const [isJoining, setIsJoining] = useState(false)
-  const [householdId, setHouseholdId] = useState<string>()
-
-  // Buscar household
-  const { data: household } = useHousehold(householdId)
-
-  // Validar convite ao carregar
   useEffect(() => {
-    const validateInvite = async () => {
-      try {
-        // Verificar autenticação
-        const user = auth.currentUser
-        if (!user) {
-          navigate('/login', { 
-            state: { redirect: `/convite/${code}` }
-          })
-          return
-        }
-
-        // Validar convite
-        const result = await InviteService.validate(code)
-        
-        if (!result.valid) {
-          toast.error(result.error || 'Convite inválido')
-          navigate('/')
-          return
-        }
-
-        setHouseholdId(result.householdId)
-
-      } catch (error) {
-        toast.error('Erro ao validar convite')
-        navigate('/')
-      } finally {
-        setIsLoading(false)
-      }
+    // Redirecionar para login se não estiver autenticado
+    if (!user) {
+      navigate('/login')
+      return
     }
 
-    validateInvite()
-  }, [code, navigate])
+    // Se já aceitou, não fazer nada
+    if (accepted) return
 
-  // Aceitar convite
+    // Auto-aceitar se tiver código e usuário logado
+    if (code && user && !loading) {
+      handleAcceptInvite()
+    }
+  }, [code, user, accepted, loading])
+
   const handleAcceptInvite = async () => {
+    if (!code || !user) return
+
+    setLoading(true)
+    setError(null)
+
     try {
-      setIsJoining(true)
-
-      const user = auth.currentUser
-      if (!user || !householdId) return
-
-      // Criar membro
-      await DatabaseMiddleware.create({
-        collection: 'members',
-        data: {
-          householdId,
-          userId: user.uid,
-          role: 'member'
-        }
-      })
-
-      // Registrar uso do convite
-      await InviteService.use(code)
-
-      // Redirecionar
-      navigate(`/app/h/${householdId}`)
-      toast.success('Bem-vindo à casa!')
-
-    } catch (error) {
-      if (error instanceof DatabaseError) {
-        toast.error(error.message)
-      } else {
-        toast.error('Erro ao aceitar convite')
-      }
+      await acceptInvite(code)
+      setAccepted(true)
+      
+      // Redirecionar para as despesas após 2 segundos
+      setTimeout(() => {
+        navigate('/expenses')
+      }, 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao aceitar convite'
+      setError(message)
+      toast.error(message)
     } finally {
-      setIsJoining(false)
+      setLoading(false)
     }
   }
 
-  if (isLoading || !household) {
+  const handleGoToApp = () => {
+    navigate('/expenses')
+  }
+
+  const handleGoToLogin = () => {
+    navigate('/login')
+  }
+
+  if (!user) {
     return (
-      <div className="container max-w-lg py-8">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-4 w-48" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users className="w-8 h-8 text-blue-600" />
+            </div>
+            <CardTitle>Convite para Despesas Compartilhadas</CardTitle>
+            <CardDescription>
+              Você foi convidado para participar de uma household de despesas compartilhadas.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3 mt-2" />
+          <CardContent className="text-center space-y-4">
+            <p className="text-sm text-gray-600">
+              Para aceitar este convite, você precisa fazer login primeiro.
+            </p>
+            <Button onClick={handleGoToLogin} className="w-full">
+              Fazer Login
+            </Button>
           </CardContent>
-          <CardFooter>
-            <Skeleton className="h-10 w-full" />
-          </CardFooter>
+        </Card>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
+              <h2 className="text-xl font-semibold">Aceitando convite...</h2>
+              <p className="text-gray-600">Aguarde enquanto processamos seu convite.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (accepted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+              <h2 className="text-xl font-semibold text-green-700">Convite aceito!</h2>
+              <p className="text-gray-600">
+                Você agora faz parte da household. Redirecionando para as despesas...
+              </p>
+              <Button onClick={handleGoToApp} className="w-full">
+                Ir para Despesas
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <XCircle className="w-16 h-16 text-red-500 mx-auto" />
+              <h2 className="text-xl font-semibold text-red-700">Erro ao aceitar convite</h2>
+              <p className="text-gray-600">{error}</p>
+              <div className="space-y-2">
+                <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
+                  Tentar Novamente
+                </Button>
+                <Button onClick={handleGoToApp} className="w-full">
+                  Ir para o App
+                </Button>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="container max-w-lg py-8">
-      <Card>
-        <CardHeader>
-          <h1 className="text-2xl font-bold">
-            Convite para {household.name}
-          </h1>
-        </CardHeader>
-
-        <CardContent>
-          <p>
-            Você foi convidado para participar desta casa.
-            Ao aceitar, você poderá:
-          </p>
-
-          <ul className="list-disc list-inside mt-4 space-y-2">
-            <li>Ver todas as despesas da casa</li>
-            <li>Adicionar novas despesas</li>
-            <li>Participar dos rateios</li>
-            <li>Receber notificações</li>
-          </ul>
-        </CardContent>
-
-        <CardFooter>
-          <div className="flex gap-4 w-full">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => navigate('/')}
-            >
-              Recusar
-            </Button>
-
-            <Button
-              className="flex-1"
-              onClick={handleAcceptInvite}
-              disabled={isJoining}
-            >
-              {isJoining ? 'Entrando...' : 'Aceitar Convite'}
-            </Button>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Home className="w-8 h-8 text-blue-600" />
           </div>
-        </CardFooter>
+          <CardTitle>Aceitar Convite</CardTitle>
+          <CardDescription>
+            Você foi convidado para participar de uma household de despesas compartilhadas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-center">
+            <p className="text-sm text-gray-600 mb-4">
+              Código do convite: <span className="font-mono font-bold">{code}</span>
+            </p>
+          </div>
+          <Button onClick={handleAcceptInvite} disabled={loading} className="w-full">
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Aceitando...
+              </>
+            ) : (
+              'Aceitar Convite'
+            )}
+          </Button>
+          <Button onClick={handleGoToApp} variant="outline" className="w-full">
+            Ir para o App
+          </Button>
+        </CardContent>
       </Card>
     </div>
   )

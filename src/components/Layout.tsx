@@ -4,10 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   CreditCard,
-  CheckSquare,
-  Pill,
-  Calendar,
-  BarChart3,
   Settings,
   Menu,
   User,
@@ -15,7 +11,7 @@ import {
   LogOut
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useCurrentHousehold } from '@/core/store'
+import { useHouseholds } from '@/hooks/useHouseholds'
 import { NotificationButton } from '@/features/notifications/components/NotificationButton'
 import { GlobalSearch } from './GlobalSearch'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -33,30 +29,6 @@ const navigation = [
     badge: 0,
   },
   {
-    name: 'Tarefas',
-    href: '/tasks',
-    icon: CheckSquare,
-    badge: 0,
-  },
-  {
-    name: 'Remédios',
-    href: '/medications',
-    icon: Pill,
-    badge: 0,
-  },
-  {
-    name: 'Calendário',
-    href: '/calendar',
-    icon: Calendar,
-    badge: 0,
-  },
-  {
-    name: 'Relatórios',
-    href: '/reports',
-    icon: BarChart3,
-    badge: 0,
-  },
-  {
     name: 'Configurações',
     href: '/settings',
     icon: Settings,
@@ -66,7 +38,7 @@ const navigation = [
 
 export function Layout() {
   const location = useLocation()
-  const currentHousehold = useCurrentHousehold()
+  const { currentHousehold } = useHouseholds()
   const { user, signOut } = useAuth()
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
   

@@ -21,6 +21,15 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportCSV, exportPDF, download as downloadBlob } from '@/services/exportService'
+import { InviteButton } from '@/features/households/components/InviteButton'
+import { ImprovedInviteSystem } from '@/features/households/components/ImprovedInviteSystem'
+import { ApprovalRequestsManager } from '@/features/households/components/ApprovalRequestsManager'
+import { InviteSystemInfo } from '@/features/households/components/InviteSystemInfo'
+import { RequestToJoinSystem } from '@/features/households/components/RequestToJoinSystem'
+import { ProcessJoinRequestSystem } from '@/features/households/components/ProcessJoinRequestSystem'
+import InvitesManager from '@/features/households/components/InvitesManager'
+import JoinWithCode from '@/features/households/components/JoinWithCode'
+import MembersManager from '@/features/households/components/MembersManager'
 
 function HouseholdSettingsCard() {
   const household = useCurrentHousehold()
@@ -68,8 +77,13 @@ function HouseholdSettingsCard() {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurações da Casa</h3>
-      <p className="text-sm text-gray-500 mb-4">Controle quem pode editar/excluir despesas criadas por outros membros.</p>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Sistema de Convites</h3>
+        <InviteSystemInfo />
+      </div>
+      <p className="text-sm text-gray-500 mb-4">
+        Novo sistema de convites com códigos únicos, controle de roles e aprovação manual para administradores.
+      </p>
 
       <div className="space-y-4">
         <div>
@@ -89,14 +103,49 @@ function HouseholdSettingsCard() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
-            onClick={handleSave}
-            disabled={!canEdit || saving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleSave}
+              disabled={!canEdit || saving}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+
+            {/* Improved invite system with better controls */}
+            {household?.id && (
+              <div className="space-y-3">
+                {/* Admin tools */}
+                <div className="flex flex-col md:flex-row md:items-center md:space-x-3 w-full gap-3">
+                  <ImprovedInviteSystem householdId={household.id} />
+                  <ApprovalRequestsManager />
+                  <ProcessJoinRequestSystem />
+                </div>
+                
+                {/* User tools */}
+                <div className="flex flex-col md:flex-row md:items-center md:space-x-3 w-full gap-3">
+                  <JoinWithCode />
+                  <RequestToJoinSystem />
+                </div>
+
+                <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                  <strong>💡 Dicas:</strong>
+                  <ul className="mt-1 space-y-1 list-disc list-inside">
+                    <li><strong>Admins:</strong> Criem convites ou processem solicitações</li>
+                    <li><strong>Usuários:</strong> Entrem com código recebido ou solicitem entrada</li>
+                    <li><strong>Bidirecional:</strong> Convites podem ir em ambas as direções!</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+        {canEdit && household?.id && (
+          <>
+            <InvitesManager householdId={household.id} />
+            <MembersManager householdId={household.id} />
+          </>
+        )}
       </div>
     </div>
   )
