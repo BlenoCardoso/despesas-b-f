@@ -13,7 +13,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "householdId", "order": "ASCENDING" },
-        { "fieldPath": "deletedAt", "arrayConfig": "CONTAINS" }
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {

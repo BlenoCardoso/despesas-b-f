@@ -70,11 +70,30 @@ function ExpenseApp() {
     try {
       setLoading(true)
       console.log('🚀 Inicializando aplicativo...')
+      // 1. Tentar reutilizar householdId persistido
+      let storedHouseholdId: string | null = null
+      if (typeof window !== 'undefined') {
+        storedHouseholdId = localStorage.getItem('currentHouseholdId')
+        if (storedHouseholdId) {
+          console.log('💾 HouseholdId encontrado em localStorage:', storedHouseholdId)
+        }
+      }
       
       // Verificar se já existe uma household
       let households: any[] = []
       try {
-        households = await firebaseHouseholdService.getUserHouseholds(userId)
+        if (storedHouseholdId) {
+          const hh = await firebaseHouseholdService.getHouseholdById(storedHouseholdId)
+          if (hh) {
+            households = [hh]
+            console.log('✅ Household carregada via stored id')
+          } else {
+            console.log('ℹ️ Household armazenada não encontrada, buscando por membro...')
+            households = await firebaseHouseholdService.getUserHouseholds(userId)
+          }
+        } else {
+          households = await firebaseHouseholdService.getUserHouseholds(userId)
+        }
       } catch (err: any) {
         const msg = err?.message || ''
         console.warn('⚠️ Falha ao buscar households, tentando criar nova. Motivo:', msg)
@@ -88,14 +107,15 @@ function ExpenseApp() {
       let householdId: string
       
       if (households.length === 0) {
-        console.log('🏠 Configurando nova casa...')
+        console.log('🏠 Nenhuma household existente. Criando nova casa...')
         householdId = await firebaseHouseholdService.createHousehold('Casa B&F', userId)
-        
-        // Criar algumas despesas demo
+        if (typeof window !== 'undefined') localStorage.setItem('currentHouseholdId', householdId)
+        // Criar despesas demo apenas se ainda não criadas para esta household
         await createDemoExpenses(householdId, userId)
       } else {
         householdId = households[0].id
-        console.log('🏠 Carregando casa existente...')
+        console.log('🏠 Carregando casa existente:', householdId)
+        if (typeof window !== 'undefined') localStorage.setItem('currentHouseholdId', householdId)
       }
       
       const household = await firebaseHouseholdService.getHouseholdById(householdId)
@@ -137,6 +157,16 @@ function ExpenseApp() {
 
   // Criar despesas demo no Firebase
   const createDemoExpenses = async (householdId: string, userId: string) => {
+    // Evitar recriar demo se já foi criada uma vez para esta household
+    if (typeof window !== 'undefined') {
+      const demoKey = `demoCreated:${householdId}`
+      const already = localStorage.getItem(demoKey)
+      if (already) {
+        console.log('⏭️ Despesas demo já criadas anteriormente. Pulando.')
+        return
+      }
+      localStorage.setItem(demoKey, '1')
+    }
     const demoExpenses = [
       {
         householdId,
