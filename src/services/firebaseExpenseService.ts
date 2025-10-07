@@ -141,90 +141,75 @@ export class FirebaseExpenseService {
 
   // Escutar mudanças em tempo real
   subscribeToExpenses(householdId: string, callback: (expenses: Expense[]) => void): () => void {
-    console.log('🔄 Configurando subscription para householdId:', householdId);
-    
+    console.log('🔄 Configurando listener filtrado para householdId:', householdId);
     try {
-      // TESTE: Primeiro listener sem filtro de household para ver se recebe algo
-      console.log('🧪 TESTE: Configurando listener SEM filtro primeiro...');
-      const testQuery = query(collection(db, 'expenses'));
-      
-      const unsubscribe = onSnapshot(testQuery, 
-        (querySnapshot) => {
-          console.log('🔄 Snapshot TESTE recebido, documentos TOTAIS:', querySnapshot.size);
-          
-          // Agora filtrar por household no lado do cliente
-          const allExpenses = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            
-            // Conversão segura de timestamps para o listener
-            let createdAt: Date;
+      // Função auxiliar para mapear snapshot => expenses
+      const mapSnapshot = (snapshot: any): Expense[] => {
+        const list = snapshot.docs.map((docSnap: any) => {
+          const data = docSnap.data();
+          let createdAt: Date;
             let updatedAt: Date;
-            
             try {
-              if (data.createdAt && typeof data.createdAt.toDate === 'function') {
-                createdAt = data.createdAt.toDate();
-              } else if (data.createdAt && data.createdAt.seconds) {
-                createdAt = new Date(data.createdAt.seconds * 1000);
-              } else {
-                createdAt = new Date();
-              }
-            } catch (error) {
-              console.warn('⚠️ Listener - Erro ao converter createdAt:', error);
-              createdAt = new Date();
-            }
-            
+              if (data.createdAt && typeof data.createdAt.toDate === 'function') createdAt = data.createdAt.toDate();
+              else if (data.createdAt?.seconds) createdAt = new Date(data.createdAt.seconds * 1000);
+              else createdAt = new Date();
+            } catch { createdAt = new Date(); }
             try {
-              if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
-                updatedAt = data.updatedAt.toDate();
-              } else if (data.updatedAt && data.updatedAt.seconds) {
-                updatedAt = new Date(data.updatedAt.seconds * 1000);
-              } else {
-                updatedAt = new Date();
-              }
-            } catch (error) {
-              console.warn('⚠️ Listener - Erro ao converter updatedAt:', error);
-              updatedAt = new Date();
-            }
-            
+              if (data.updatedAt && typeof data.updatedAt.toDate === 'function') updatedAt = data.updatedAt.toDate();
+              else if (data.updatedAt?.seconds) updatedAt = new Date(data.updatedAt.seconds * 1000);
+              else updatedAt = new Date();
+            } catch { updatedAt = new Date(); }
             return {
-              id: doc.id,
+              id: docSnap.id,
               ...data,
               createdAt,
               updatedAt
-            };
-          }) as Expense[];
-          
-          // Filtrar por household no cliente
-          const householdExpenses = allExpenses.filter(expense => 
-            expense.householdId === householdId
-          );
-          
-          console.log('🔍 Despesas do household', householdId + ':', householdExpenses.length);
-          
-          // Filtrar despesas não deletadas
-          const activeExpenses = householdExpenses.filter(expense => !expense.deletedAt);
-          console.log('✅ Despesas ativas no snapshot:', activeExpenses.length);
-          console.log('🔍 Lista de despesas ativas:', activeExpenses.map(e => ({
-            id: e.id,
-            description: e.description,
-            amount: e.amount,
-            householdId: e.householdId
-          })));
-          
-          callback(activeExpenses);
-        }, 
-        (error) => {
-          console.error('❌ Erro no snapshot listener:', error);
-          console.error('❌ Detalhes do erro:', error.code, error.message);
-        }
+            } as Expense;
+        }).filter((e: Expense) => !e.deletedAt);
+        // Garantir ordenação por createdAt desc mesmo no fallback
+        return list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      };
+
+      const baseQuery = query(
+        collection(db, 'expenses'),
+        where('householdId', '==', householdId),
+        orderBy('createdAt', 'desc')
       );
-      
-      console.log('✅ Listener TESTE configurado com sucesso');
-      return unsubscribe;
-      
-    } catch (error) {
-      console.error('❌ Erro ao configurar listener:', error);
-      throw error;
+
+      let activeUnsub: () => void = () => {};
+
+      const startPrimaryListener = () => {
+        activeUnsub = onSnapshot(baseQuery, (snapshot) => {
+          console.log('📸 Snapshot despesas (filtrado) tamanho:', snapshot.size);
+          callback(mapSnapshot(snapshot));
+        }, (error) => {
+          // Índice ausente => fallback sem orderBy
+          if ((error as any).code === 'failed-precondition') {
+            console.warn('⚠️ Índice faltando para (householdId + createdAt). Usando fallback sem orderBy. Crie o índice para melhor performance.');
+            const fallbackQ = query(
+              collection(db, 'expenses'),
+              where('householdId', '==', householdId)
+            );
+            activeUnsub = onSnapshot(fallbackQ, (snap2) => {
+              console.log('📸 Snapshot (fallback) tamanho:', snap2.size);
+              callback(mapSnapshot(snap2));
+            }, (err2) => {
+              console.error('❌ Erro listener fallback despesas:', err2);
+            });
+          } else {
+            console.error('❌ Erro listener despesas filtrado:', error);
+          }
+        });
+      };
+
+      startPrimaryListener();
+      console.log('✅ Listener de despesas configurado (primário ou fallback)');
+      return () => {
+        try { activeUnsub && activeUnsub(); } catch {}
+      };
+    } catch (e) {
+      console.error('❌ Erro ao configurar listener filtrado:', e);
+      throw e;
     }
   }
 

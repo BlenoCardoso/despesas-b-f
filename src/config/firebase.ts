@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { Capacitor } from '@capacitor/core';
@@ -52,6 +52,11 @@ try {
 // Inicializar serviços
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+// Garantir que a autenticação (incluindo anônima) persista entre reloads
+setPersistence(auth, browserLocalPersistence).catch(err => {
+  // eslint-disable-next-line no-console
+  console.warn('Falha ao definir persistência de auth (fallback para padrão):', err);
+});
 export const storage = getStorage(app);
 
 // Environment flag to connect to local emulators during development
