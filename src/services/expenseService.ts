@@ -63,6 +63,8 @@ class ExpenseService {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
+    console.log('💾 [expenseService] Criando despesa:', { title: data.title, amount: data.amount, householdId })
+
     // Se não especificou participantes, incluir apenas o criador
     const participants = data.participants || [user.id]
     
@@ -91,21 +93,31 @@ class ExpenseService {
       sharedPercentages
     }
 
-    const docRef = await addDoc(collection(db, 'expenses'), expenseData)
-    
-    return {
-      id: docRef.id,
-      ...expenseData,
-      date: data.date,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    } as Expense
+    try {
+      const docRef = await addDoc(collection(db, 'expenses'), expenseData)
+      console.log('✅ [expenseService] Despesa criada com sucesso! ID:', docRef.id)
+      
+      return {
+        id: docRef.id,
+        ...expenseData,
+        date: data.date,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as Expense
+    } catch (error: any) {
+      console.error('❌ [expenseService] Erro ao criar despesa:', error)
+      console.error('❌ [expenseService] Código do erro:', error?.code)
+      console.error('❌ [expenseService] Mensagem:', error?.message)
+      throw new Error(`Erro ao salvar despesa: ${error?.message || 'Erro desconhecido'}`)
+    }
   }
 
   // Atualizar despesa
   async updateExpense(id: string, data: Partial<ExpenseFormData>): Promise<void> {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
+
+    console.log('✏️ [expenseService] Atualizando despesa:', id)
 
     const updateData: any = {
       updatedAt: serverTimestamp()
@@ -120,8 +132,14 @@ class ExpenseService {
     if (data.participants !== undefined) updateData.participants = data.participants
     if (data.sharedPercentages !== undefined) updateData.sharedPercentages = data.sharedPercentages
 
-    const docRef = doc(db, 'expenses', id)
-    await updateDoc(docRef, updateData)
+    try {
+      const docRef = doc(db, 'expenses', id)
+      await updateDoc(docRef, updateData)
+      console.log('✅ [expenseService] Despesa atualizada com sucesso')
+    } catch (error: any) {
+      console.error('❌ [expenseService] Erro ao atualizar despesa:', error)
+      throw new Error(`Erro ao atualizar despesa: ${error?.message || 'Erro desconhecido'}`)
+    }
   }
 
   // Deletar despesa
@@ -129,12 +147,20 @@ class ExpenseService {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
-    // Verificar se o usuário pode deletar (criador ou membro da household)
-    const expense = await this.getExpense(id)
-    if (!expense) throw new Error('Despesa não encontrada')
+    console.log('🗑️ [expenseService] Deletando despesa:', id)
 
-    const docRef = doc(db, 'expenses', id)
-    await deleteDoc(docRef)
+    try {
+      // Verificar se o usuário pode deletar (criador ou membro da household)
+      const expense = await this.getExpense(id)
+      if (!expense) throw new Error('Despesa não encontrada')
+
+      const docRef = doc(db, 'expenses', id)
+      await deleteDoc(docRef)
+      console.log('✅ [expenseService] Despesa deletada com sucesso')
+    } catch (error: any) {
+      console.error('❌ [expenseService] Erro ao deletar despesa:', error)
+      throw new Error(`Erro ao deletar despesa: ${error?.message || 'Erro desconhecido'}`)
+    }
   }
 
   // Buscar despesa por ID
@@ -175,9 +201,12 @@ class ExpenseService {
   subscribeToExpenses(
     householdId: string, 
     callback: (expenses: Expense[]) => void,
-    limitCount = 50
+    limitCount = 100 // Aumentado para pegar mais despesas
   ): () => void {
-    const q = query(
+    console.log('🔄 [expenseService] Configurando listener em tempo real para household:', householdId)
+    
+    // Primeira tentativa: Com ordenação por data
+    let primaryQuery = query(
       collection(db, 'expenses'),
       where('householdId', '==', householdId),
       orderBy('date', 'desc'),
@@ -185,30 +214,89 @@ class ExpenseService {
       limit(limitCount)
     )
 
-    return onSnapshot(q, (snapshot) => {
-      const expenses = snapshot.docs.map(doc => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          householdId: data.householdId,
-          title: data.title,
-          amount: data.amount,
-          category: data.category,
-          date: data.date.toDate(),
-          createdBy: data.createdBy,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          notes: data.notes || '',
-          participants: data.participants || [],
-          paymentMethod: data.paymentMethod,
-          paid: data.paid || false,
-          paidBy: data.paidBy,
-          paidAt: data.paidAt?.toDate(),
-          sharedPercentages: data.sharedPercentages || {}
+    const unsubscribe = onSnapshot(
+      primaryQuery,
+      (snapshot) => {
+        console.log('📸 [expenseService] Snapshot recebido:', snapshot.size, 'despesas')
+        
+        const expenses = snapshot.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            householdId: data.householdId,
+            title: data.title,
+            amount: data.amount,
+            category: data.category,
+            date: data.date.toDate(),
+            createdBy: data.createdBy,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date(),
+            notes: data.notes || '',
+            participants: data.participants || [],
+            paymentMethod: data.paymentMethod,
+            paid: data.paid || false,
+            paidBy: data.paidBy,
+            paidAt: data.paidAt?.toDate(),
+            sharedPercentages: data.sharedPercentages || {}
+          }
+        })
+        
+        console.log('✅ [expenseService] Despesas processadas:', expenses.length)
+        callback(expenses)
+      },
+      (error: any) => {
+        console.error('❌ [expenseService] Erro no listener:', error)
+        console.error('❌ [expenseService] Código:', error?.code)
+        
+        // Se o erro for falta de índice, tentar fallback sem ordenação
+        if (error?.code === 'failed-precondition') {
+          console.warn('⚠️ [expenseService] Índice faltando, usando fallback sem ordenação')
+          
+          const fallbackQuery = query(
+            collection(db, 'expenses'),
+            where('householdId', '==', householdId),
+            limit(limitCount)
+          )
+          
+          return onSnapshot(fallbackQuery, (snapshot) => {
+            console.log('📸 [expenseService] Snapshot fallback:', snapshot.size, 'despesas')
+            
+            const expenses = snapshot.docs.map(doc => {
+              const data = doc.data()
+              return {
+                id: doc.id,
+                householdId: data.householdId,
+                title: data.title,
+                amount: data.amount,
+                category: data.category,
+                date: data.date.toDate(),
+                createdBy: data.createdBy,
+                createdAt: data.createdAt?.toDate() || new Date(),
+                updatedAt: data.updatedAt?.toDate() || new Date(),
+                notes: data.notes || '',
+                participants: data.participants || [],
+                paymentMethod: data.paymentMethod,
+                paid: data.paid || false,
+                paidBy: data.paidBy,
+                paidAt: data.paidAt?.toDate(),
+                sharedPercentages: data.sharedPercentages || {}
+              }
+            })
+            
+            // Ordenar manualmente por data (mais recente primeiro)
+            expenses.sort((a, b) => b.date.getTime() - a.date.getTime())
+            
+            console.log('✅ [expenseService] Despesas processadas (fallback):', expenses.length)
+            callback(expenses)
+          })
         }
-      })
-      callback(expenses)
-    })
+      }
+    )
+
+    return () => {
+      console.log('🔄 [expenseService] Desconectando listener para household:', householdId)
+      unsubscribe()
+    }
   }
 
   // Listar despesas com paginação

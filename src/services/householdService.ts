@@ -56,6 +56,8 @@ class HouseholdService {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
+    console.log('🏠 [householdService] Criando household:', name)
+
     const householdData = {
       name,
       ownerId: user.id,
@@ -65,8 +67,14 @@ class HouseholdService {
       currency: 'BRL'
     }
 
-    const docRef = await addDoc(collection(db, 'households'), householdData)
-    return docRef.id
+    try {
+      const docRef = await addDoc(collection(db, 'households'), householdData)
+      console.log('✅ [householdService] Household criada com ID:', docRef.id)
+      return docRef.id
+    } catch (error: any) {
+      console.error('❌ [householdService] Erro ao criar household:', error)
+      throw new Error(`Erro ao criar household: ${error?.message || 'Erro desconhecido'}`)
+    }
   }
 
   // Buscar household por ID
@@ -126,28 +134,77 @@ class HouseholdService {
 
   // Escutar mudanças em tempo real
   subscribeToUserHouseholds(userId: string, callback: (households: Household[]) => void): () => void {
+    console.log('🔄 [householdService] Configurando listener para households do usuário:', userId)
+    
     const q = query(
       collection(db, 'households'),
       where('members', 'array-contains', userId),
       orderBy('updatedAt', 'desc')
     )
 
-    return onSnapshot(q, (snapshot) => {
-      const households = snapshot.docs.map(doc => {
-        const data = doc.data()
-        return {
-          id: doc.id,
-          name: data.name,
-          ownerId: data.ownerId,
-          members: data.members || [],
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          inviteCode: data.inviteCode,
-          currency: data.currency || 'BRL'
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        console.log('📸 [householdService] Snapshot recebido:', snapshot.size, 'households')
+        
+        const households = snapshot.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            name: data.name,
+            ownerId: data.ownerId,
+            members: data.members || [],
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date(),
+            inviteCode: data.inviteCode,
+            currency: data.currency || 'BRL'
+          }
+        })
+        
+        console.log('✅ [householdService] Households processadas:', households.length)
+        callback(households)
+      },
+      (error: any) => {
+        console.error('❌ [householdService] Erro no listener:', error)
+        
+        // Fallback sem ordenação se índice não existir
+        if (error?.code === 'failed-precondition') {
+          console.warn('⚠️ [householdService] Índice faltando, usando fallback')
+          
+          const fallbackQuery = query(
+            collection(db, 'households'),
+            where('members', 'array-contains', userId)
+          )
+          
+          return onSnapshot(fallbackQuery, (snapshot) => {
+            const households = snapshot.docs.map(doc => {
+              const data = doc.data()
+              return {
+                id: doc.id,
+                name: data.name,
+                ownerId: data.ownerId,
+                members: data.members || [],
+                createdAt: data.createdAt?.toDate() || new Date(),
+                updatedAt: data.updatedAt?.toDate() || new Date(),
+                inviteCode: data.inviteCode,
+                currency: data.currency || 'BRL'
+              }
+            })
+            
+            // Ordenar manualmente
+            households.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+            
+            console.log('✅ [householdService] Households processadas (fallback):', households.length)
+            callback(households)
+          })
         }
-      })
-      callback(households)
-    })
+      }
+    )
+
+    return () => {
+      console.log('🔄 [householdService] Desconectando listener de households')
+      unsubscribe()
+    }
   }
 
   // Gerar código de convite
@@ -155,14 +212,21 @@ class HouseholdService {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
+    console.log('🎟️ [householdService] Gerando código de convite para:', householdId)
+
     // Verificar se o usuário é owner ou membro
     const household = await this.getHousehold(householdId)
     if (!household || !household.members.includes(user.id)) {
       throw new Error('Usuário não tem permissão para gerar convites')
     }
 
-    // Gerar código único de 8 caracteres
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase()
+    // Gerar código único de exatamente 6 caracteres (letras maiúsculas e números)
+    // Usar caracteres específicos para garantir legibilidade (sem 0, O, I, 1)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
     
     // Criar convite no Firestore
     const inviteData = {
@@ -170,12 +234,18 @@ class HouseholdService {
       code,
       createdBy: user.id,
       createdAt: serverTimestamp(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 dias
+      expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)), // 7 dias
       used: false
     }
 
-    await addDoc(collection(db, 'invites'), inviteData)
-    return code
+    try {
+      await addDoc(collection(db, 'invites'), inviteData)
+      console.log('✅ [householdService] Código de convite criado:', code)
+      return code
+    } catch (error: any) {
+      console.error('❌ [householdService] Erro ao criar convite:', error)
+      throw new Error(`Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
+    }
   }
 
   // Aceitar convite usando código
@@ -183,53 +253,64 @@ class HouseholdService {
     const user = authService.getCurrentUser()
     if (!user) throw new Error('Usuário não autenticado')
 
-    // Buscar convite ativo
-    const q = query(
-      collection(db, 'invites'),
-      where('code', '==', code),
-      where('used', '==', false)
-    )
-    
-    const querySnapshot = await getDocs(q)
-    if (querySnapshot.empty) {
-      throw new Error('Código de convite inválido ou expirado')
+    console.log('✅ [householdService] Aceitando convite com código:', code)
+
+    try {
+      // Buscar convite ativo
+      const q = query(
+        collection(db, 'invites'),
+        where('code', '==', code),
+        where('used', '==', false)
+      )
+      
+      const querySnapshot = await getDocs(q)
+      if (querySnapshot.empty) {
+        throw new Error('Código de convite inválido ou já utilizado')
+      }
+
+      const inviteDoc = querySnapshot.docs[0]
+      const invite = inviteDoc.data()
+
+      // Verificar se não expirou
+      const expiresAt = invite.expiresAt.toDate()
+      if (expiresAt < new Date()) {
+        throw new Error('Código de convite expirado')
+      }
+
+      // Verificar se o usuário já não é membro
+      const household = await this.getHousehold(invite.householdId)
+      if (!household) {
+        throw new Error('Household não encontrada')
+      }
+
+      if (household.members.includes(user.id)) {
+        console.log('⚠️ [householdService] Usuário já é membro desta household')
+        return invite.householdId // Retorna o ID mesmo assim
+      }
+
+      console.log('➕ [householdService] Adicionando usuário à household:', invite.householdId)
+
+      // Adicionar usuário como membro
+      const householdRef = doc(db, 'households', invite.householdId)
+      await updateDoc(householdRef, {
+        members: arrayUnion(user.id),
+        updatedAt: serverTimestamp()
+      })
+
+      // Marcar convite como usado
+      const inviteRef = doc(db, 'invites', inviteDoc.id)
+      await updateDoc(inviteRef, {
+        used: true,
+        usedBy: user.id,
+        usedAt: serverTimestamp()
+      })
+
+      console.log('✅ [householdService] Convite aceito com sucesso!')
+      return invite.householdId
+    } catch (error: any) {
+      console.error('❌ [householdService] Erro ao aceitar convite:', error)
+      throw new Error(`Erro ao aceitar convite: ${error?.message || 'Erro desconhecido'}`)
     }
-
-    const inviteDoc = querySnapshot.docs[0]
-    const invite = inviteDoc.data()
-
-    // Verificar se não expirou
-    const expiresAt = invite.expiresAt.toDate()
-    if (expiresAt < new Date()) {
-      throw new Error('Código de convite expirado')
-    }
-
-    // Verificar se o usuário já não é membro
-    const household = await this.getHousehold(invite.householdId)
-    if (!household) {
-      throw new Error('Household não encontrada')
-    }
-
-    if (household.members.includes(user.id)) {
-      throw new Error('Você já é membro desta household')
-    }
-
-    // Adicionar usuário como membro
-    const householdRef = doc(db, 'households', invite.householdId)
-    await updateDoc(householdRef, {
-      members: arrayUnion(user.id),
-      updatedAt: serverTimestamp()
-    })
-
-    // Marcar convite como usado
-    const inviteRef = doc(db, 'invites', inviteDoc.id)
-    await updateDoc(inviteRef, {
-      used: true,
-      usedBy: user.id,
-      usedAt: serverTimestamp()
-    })
-
-    return invite.householdId
   }
 
   // Sair da household

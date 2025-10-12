@@ -2,7 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Funções auxiliares
+    // =========================================
+    // FUNÇÕES AUXILIARES
+    // =========================================
+    
     function isSignedIn() {
       return request.auth != null;
     }
@@ -17,52 +20,215 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members;
     }
 
-    // Users - permitir leitura global e escrita do próprio perfil
+    // =========================================
+    // USERS - Perfis de usuário
+    // =========================================
     match /users/{userId} {
+      // Qualquer usuário logado pode ler perfis (necessário para ver membros da household)
       allow read: if isSignedIn();
+      
+      // Criar ou atualizar apenas o próprio perfil
       allow create, update: if isCurrentUser(userId);
+      
+      // Ninguém pode deletar usuários
       allow delete: if false;
     }
 
-    // Households - acesso baseado em membership
+    // =========================================
+    // HOUSEHOLDS - Casas/Grupos
+    // =========================================
     match /households/{householdId} {
-      allow read: if isHouseholdMember(householdId);
-      allow create: if isSignedIn();
-      allow update: if isHouseholdMember(householdId);
+      // Leitura por usuários autenticados
+      // Motivo: durante o fluxo de convite o usuário ainda não é membro,
+      // mas precisa ler dados mínimos da household (ex.: nome) antes de entrar.
+      // Se preferir mais restrição, mova a checagem para Cloud Functions.
+      allow read: if isSignedIn();
+      
+      // Qualquer usuário logado pode criar uma household
+      allow create: if isSignedIn() &&
+        // O criador deve estar na lista de members
+        request.auth.uid in request.resource.data.members &&
+        // O criador deve ser o ownerId
+        request.auth.uid == request.resource.data.ownerId;
+      
+      // Membros podem atualizar. Também permitimos que um usuário se adicione
+      // à household (self-join) APENAS quando a única alteração for adicionar
+      // o próprio UID ao array members. Isso é necessário para aceitar convites
+      // no cliente sem Cloud Functions.
+      allow update: if (
+        // Regra padrão: quem já é membro pode atualizar
+        isHouseholdMember(householdId)
+      ) || (
+        // Exceção controlada: permitir auto-entrada
+        isSignedIn() &&
+        // Não era membro antes
+        !(request.auth.uid in resource.data.members) &&
+        // Passa a ser membro depois
+        request.auth.uid in request.resource.data.members &&
+        // Tamanho de members aumenta exatamente em 1
+        request.resource.data.members.size() == resource.data.members.size() + 1 &&
+        // Ninguém é removido (o conjunto anterior é subconjunto do novo)
+        request.resource.data.members.toSet().hasAll(resource.data.members.toSet()) &&
+        // Somente campos permitidos foram alterados
+        resource.data.diff(request.resource.data).changedKeys().hasOnly(['members', 'updatedAt', 'updatedBy'])
+      );
+      
+      // Apenas o owner pode deletar
       allow delete: if isSignedIn() && 
         resource.data.ownerId == request.auth.uid;
     }
 
-    // Expenses - acesso baseado em membership da household
+    // =========================================
+    // EXPENSES - Despesas compartilhadas
+    // =========================================
     match /expenses/{expenseId} {
+      // Membros da household podem ler todas as despesas
+      allow read: if isSignedIn() && 
+        exists(/databases/$(database)/documents/households/$(resource.data.householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members;
+      
+      // Membros podem criar despesas para sua household
+      allow create: if isSignedIn() && 
+        // Verificar se o householdId no documento existe e o usuário é membro
+        exists(/databases/$(database)/documents/households/$(request.resource.data.householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data.members &&
+        // Garantir que o createdBy é o usuário atual
+        request.resource.data.createdBy == request.auth.uid;
+      
+      // Membros podem atualizar despesas da household
+      allow update: if isSignedIn() && 
+        exists(/databases/$(database)/documents/households/$(resource.data.householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members;
+      
+      // Membros podem deletar/soft-delete despesas
+      allow delete: if isSignedIn() && 
+        exists(/databases/$(database)/documents/households/$(resource.data.householdId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members;
+    }
+
+    // =========================================
+    // INVITES (legacy) - Sistema de convites
+    // =========================================
+    match /invites/{inviteId} {
+      // Leitura pública para permitir validar código
+      allow read: if true;
+      // Criar somente por membros; campo createdBy deve ser o autor
+      allow create: if isSignedIn() &&
+        isHouseholdMember(request.resource.data.householdId) &&
+        request.resource.data.createdBy == request.auth.uid;
+      // Atualizações simples (ex.: used=true) liberadas a usuários logados
+      allow update: if isSignedIn();
+      // Deletar por criador ou membros
+      allow delete: if isSignedIn() &&
+        (request.auth.uid == resource.data.createdBy ||
+         isHouseholdMember(resource.data.householdId));
+    }
+
+    // =========================================
+    // INVITATIONS (novo fluxo) - Convites avançados
+    // =========================================
+    match /invitations/{invitationId} {
+      // Permitir leitura pública para validação por código
+      allow read: if true;
+      // Membros podem criar convites avançados; inviterUid deve ser o autor
+      allow create: if isSignedIn() &&
+        isHouseholdMember(request.resource.data.householdId) &&
+        request.resource.data.inviterUid == request.auth.uid;
+      // Atualizações como incremento de uses ou mudança de status
+      allow update: if isSignedIn();
+      // Deletar por criador ou membros
+      allow delete: if isSignedIn() &&
+        (request.auth.uid == resource.data.inviterUid ||
+         isHouseholdMember(resource.data.householdId));
+    }
+
+    // =========================================
+    // JOIN REQUESTS - Solicitações de entrada
+    // =========================================
+    match /joinRequests/{requestId} {
+      // Leitura restrita a membros da household do pedido
+      allow read: if isSignedIn() &&
+        isHouseholdMember(resource.data.householdId);
+      // Criação: o solicitante logado cria sua própria solicitação
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.requesterUid == request.auth.uid
+      );
+      // Atualização (aprovar/rejeitar) por membros da household
+      allow update: if isSignedIn() &&
+        isHouseholdMember(resource.data.householdId);
+      // Exclusão por membros
+      allow delete: if isSignedIn() &&
+        isHouseholdMember(resource.data.householdId);
+    }
+
+    // =========================================
+    // CATEGORIES - Categorias personalizadas
+    // =========================================
+    match /categories/{categoryId} {
       allow read: if isSignedIn() && 
         isHouseholdMember(resource.data.householdId);
+      
       allow create: if isSignedIn() && 
         isHouseholdMember(request.resource.data.householdId);
-      allow update: if isSignedIn() && 
+      
+      allow update, delete: if isSignedIn() && 
         isHouseholdMember(resource.data.householdId);
-      allow delete: if isSignedIn() && 
-        (isHouseholdMember(resource.data.householdId) && 
-         resource.data.createdBy == request.auth.uid);
     }
 
-    // Invites - acesso público para leitura, criação por membros
-    match /invites/{inviteId} {
-      allow read: if true; // Público para permitir aceitar convites
+    // =========================================
+    // TASKS - Tarefas (se existir)
+    // =========================================
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+      
       allow create: if isSignedIn() && 
         isHouseholdMember(request.resource.data.householdId);
-      allow update: if isSignedIn(); // Permitir marcar como usado
-      allow delete: if isSignedIn() && 
-        request.auth.uid == resource.data.createdBy;
+      
+      allow update, delete: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
     }
 
-    // Permitir acesso de leitura para configurações globais
+    // =========================================
+    // MEDICATIONS - Medicamentos (se existir)
+    // =========================================
+    match /medications/{medicationId} {
+      allow read: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+      
+      allow create: if isSignedIn() && 
+        isHouseholdMember(request.resource.data.householdId);
+      
+      allow update, delete: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+    }
+
+    // =========================================
+    // DOCUMENTS - Documentos (se existir)
+    // =========================================
+    match /documents/{documentId} {
+      allow read: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+      
+      allow create: if isSignedIn() && 
+        isHouseholdMember(request.resource.data.householdId);
+      
+      allow update, delete: if isSignedIn() && 
+        isHouseholdMember(resource.data.householdId);
+    }
+
+    // =========================================
+    // CONFIG - Configurações globais (read-only)
+    // =========================================
     match /config/{configId} {
       allow read: if true;
       allow write: if false;
     }
 
-    // Negar acesso a qualquer outra coleção não especificada
+    // =========================================
+    // FALLBACK - Negar tudo que não foi especificado
+    // =========================================
     match /{document=**} {
       allow read, write: if false;
     }

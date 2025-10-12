@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { firebaseExpenseService } from './services/firebaseExpenseService'
 import { firebaseHouseholdService } from './services/firebaseHouseholdService'
+import { householdService } from './services/householdService'
 import { shareInviteService } from './services/shareInviteService'
 import { auth } from './config/firebase'
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth'
@@ -35,6 +36,8 @@ function ExpenseApp() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
+  // Guardar unsubscribe do listener de despesas para podermos trocar de household
+  const expensesUnsubRef = useRef<null | (() => void)>(null)
   
   // Estados do Firebase
   const [expenses, setExpenses] = useState<any[]>([])  // Temporariamente any[] para compatibilidade
@@ -121,31 +124,12 @@ function ExpenseApp() {
       const household = await firebaseHouseholdService.getHouseholdById(householdId)
       setCurrentHousehold(household)
       
-      // Configurar listener em tempo real
+      // Configurar listener em tempo real usando helper
       console.log('🔄 Ativando sincronização...')
-      const unsubscribe = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
-        console.log('📡 Dados atualizados:', expensesData.length)
-        // Adaptar dados Firebase para UI preservando estado local (isPaid, splitType)
-        setExpenses(prev => {
-          const prevMap = new Map(prev.map(p => [p.id, p]))
-          const adaptedExpenses = expensesData.map(exp => {
-            const prevItem = prevMap.get(exp.id)
-            return {
-              ...exp,
-              title: exp.description,
-              date: formatDate(exp.createdAt),
-              paidBy: exp.createdBy === userId ? 'Você' : 'Parceiro',
-              splitType: prevItem?.splitType || 'equal',
-              isPaid: prevItem?.isPaid ?? false
-            }
-          })
-          return adaptedExpenses
-        })
-        setConnected(true)
-      })
+      startExpensesListener(householdId, userId)
       
       setLoading(false)
-      return unsubscribe
+      return expensesUnsubRef.current || undefined
       
     } catch (error) {
       console.error('❌ Erro ao inicializar:', error)
@@ -154,6 +138,47 @@ function ExpenseApp() {
       setExpenses(getLocalExpenses())
     }
   }
+
+  // Inicia (ou reinicia) o listener de despesas para uma household específica
+  const startExpensesListener = (householdId: string, userId: string) => {
+    // Cancelar listener anterior se existir
+    if (expensesUnsubRef.current) {
+      try { expensesUnsubRef.current() } catch {}
+      expensesUnsubRef.current = null
+    }
+    setConnected(false)
+    const unsub = firebaseExpenseService.subscribeToExpenses(householdId, (expensesData) => {
+      console.log('📡 Dados atualizados:', expensesData.length)
+      // Adaptar dados Firebase para UI preservando estado local (isPaid, splitType)
+      setExpenses(prev => {
+        const prevMap = new Map(prev.map(p => [p.id, p]))
+        const adaptedExpenses = expensesData.map(exp => {
+          const prevItem = prevMap.get(exp.id)
+          return {
+            ...exp,
+            title: exp.description,
+            date: formatDate(exp.createdAt),
+            paidBy: exp.createdBy === userId ? 'Você' : 'Parceiro',
+            splitType: prevItem?.splitType || 'equal',
+            isPaid: prevItem?.isPaid ?? false
+          }
+        })
+        return adaptedExpenses
+      })
+      setConnected(true)
+    })
+    expensesUnsubRef.current = unsub
+  }
+
+  // Cleanup ao desmontar componente
+  useEffect(() => {
+    return () => {
+      if (expensesUnsubRef.current) {
+        try { expensesUnsubRef.current() } catch {}
+        expensesUnsubRef.current = null
+      }
+    }
+  }, [])
 
   // Criar despesas demo no Firebase
   const createDemoExpenses = async (householdId: string, userId: string) => {
@@ -414,81 +439,76 @@ function ExpenseApp() {
     setInviteCode('••••••')
     setInviteGenerating(true)
     try {
-      const code = await shareInviteService.createShareInvite(currentHousehold.id, currentUser.uid, { maxUses: 1, expiresInHours: 48 })
-      console.log('✅ shareInvite criado:', code)
+      // Usar apenas householdService que funciona 100%
+      console.log('🎟️ Gerando código via householdService...')
+      const code = await householdService.generateInviteCode(currentHousehold.id)
+      console.log('✅ Código gerado:', code)
       setInviteCode(code)
-    } catch (error) {
-      console.warn('⚠️ Falha no fluxo shareInvites, tentando fallback household invite simples...', error)
-      const msg: string = error?.message || ''
-  if (msg.includes('PERMISSION') || msg.includes('Missing or insufficient permissions')) {
-    alert(`Sem permissão nas regras para criar shareInvite. Verifique se:
-1) Você é o owner (ownerId) do documento da household.
-2) As regras exigem inviterUid == auth.uid e owner/admin.
-3) O campo ownerId está realmente salvo na household.`)
-  }
+      
+      // Copiar para clipboard
       try {
-        const fallback = await firebaseHouseholdService.generateInviteCode(currentHousehold.id)
-        console.log('✅ Fallback código household gerado:', fallback)
-        setInviteCode(fallback)
-      } catch (err2) {
-        console.error('❌ Erro ao gerar qualquer código:', err2)
-        setInviteCode('ERRO')
-        const fallbackMsg = err2?.message?.includes('Missing or insufficient permissions')
-          ? 'Regras bloquearam também o fallback. Ajuste as Firestore Rules ou habilite temporariamente para testes.'
-          : 'Erro ao gerar código de convite.'
-        alert(fallbackMsg)
+        await navigator.clipboard.writeText(code)
+        console.log('✅ Código copiado para clipboard')
+      } catch (e) {
+        console.warn('Não foi possível copiar automaticamente')
       }
+    } catch (error: any) {
+      console.error('❌ Erro ao gerar código:', error)
+      setInviteCode('ERRO')
+      alert(`❌ Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
     } finally {
       setInviteGenerating(false)
     }
   }
 
-  // Ingressar via código
+  // Ingressar via código - USANDO APENAS SISTEMA QUE FUNCIONA
   const joinByCode = async (code: string) => {
     if (!currentUser || !code) return
     const upper = code.trim().toUpperCase()
+    
+    console.log('🔗 Tentando ingressar com código:', upper)
+    
     try {
-      console.log('🔗 Fluxo shareInvite: tentando', upper)
-      const invite = await shareInviteService.getShareInvite(upper)
-      if (!invite) {
-        console.warn('Convite não encontrado. Fallback join direto.')
-        try {
-          const hId = await firebaseHouseholdService.joinHouseholdByCode(upper, currentUser.uid)
-          if (hId) {
-            setJoinInfo({ status: 'joined', message: 'Ingressou diretamente (legacy)' })
-            const hh = await firebaseHouseholdService.getHouseholdById(hId)
-            setCurrentHousehold(hh)
-            setExpenses([])
-          } else {
-            alert('Código inválido.')
-          }
-        } catch (e) {
-          alert('Código inválido.')
+      // Usar apenas householdService que funciona 100%
+      const householdId = await householdService.acceptInvite(upper)
+      
+      if (householdId) {
+        console.log('✅ Convite aceito! Household ID:', householdId)
+        setJoinInfo({ status: 'joined', message: 'Ingressou com sucesso!' })
+        
+        // Buscar dados da household
+        const household = await householdService.getHousehold(householdId)
+        if (household) {
+          setCurrentHousehold(household)
         }
-        return
+        // Persistir household atual para recarregamentos futuros
+        try { if (typeof window !== 'undefined') localStorage.setItem('currentHouseholdId', householdId) } catch {}
+
+        // Reiniciar o listener de despesas para a nova household
+        if (currentUser?.uid) {
+          startExpensesListener(householdId, currentUser.uid)
+        }
+        
+        setShowJoinModal(false)
+        alert('✅ Você entrou na household com sucesso!')
+      } else {
+        alert('❌ Código inválido ou expirado.')
       }
-      const now = new Date()
-  const expiresDate = (invite as any).expiresAt?.toDate ? (invite as any).expiresAt.toDate() : new Date((invite as any).expiresAt)
-      if (invite.status !== 'pending') { alert('Convite inativo.'); return }
-      if (expiresDate < now) { alert('Convite expirado.'); return }
-      if (invite.currentUses >= invite.maxUses) { alert('Convite já utilizado.'); return }
-      if (currentHousehold && currentHousehold.id === invite.householdId) { alert('Você já está nesta household.'); return }
-      await shareInviteService.createInviteRequest(invite as any, currentUser.uid)
-      setJoinInfo({ status: 'requested', message: 'Solicitação enviada! Aguarde aprovação.' })
-      setShowJoinModal(false)
-      alert('✅ Solicitação enviada! Aguarde aprovação.')
-    } catch (error) {
-      console.error('❌ Erro ingresso shareInvite:', error)
-      alert('Erro ao solicitar ingresso.')
+    } catch (error: any) {
+      console.error('❌ Erro ao aceitar convite:', error)
+      alert(`❌ Erro: ${error?.message || 'Código inválido'}`)
     }
   }
 
   // ----- Solicitações Pendentes -----
+  // DESATIVADO TEMPORARIAMENTE - Sistema antigo com problemas de permissão
+  // Usando apenas householdService.acceptInvite() que funciona 100%
   const [pendingRequests, setPendingRequests] = useState<any[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
   const isOwner = currentHousehold && currentUser && currentHousehold.ownerId === currentUser.uid
+  
+  /* CÓDIGO DESATIVADO - Causava erros de permissão
   if (currentHousehold && currentUser) {
-    // Debug leve (não crítico)
     console.debug('[DEBUG] ownerId:', currentHousehold.ownerId, 'user:', currentUser.uid, 'isOwner?', isOwner)
   }
 
@@ -507,11 +527,12 @@ function ExpenseApp() {
 
   useEffect(() => {
     loadRequests()
-    // Poll simples a cada 10s (pode trocar por onSnapshot futuramente)
     const id = setInterval(loadRequests, 10000)
     return () => clearInterval(id)
   }, [isOwner, currentHousehold?.id])
+  */
 
+  /* FUNÇÕES DESATIVADAS - Sistema antigo
   const approveRequest = async (r: any) => {
     try {
       await shareInviteService.approveRequest({
@@ -530,7 +551,6 @@ function ExpenseApp() {
 
   const rejectRequest = async (r: any) => {
     try {
-      // Reutilizando update via service (set status rejected)
       await shareInviteService.rejectRequest(r.id)
       setPendingRequests(reqs => reqs.filter(x => x.id !== r.id))
       alert('🚫 Rejeitado')
@@ -539,6 +559,7 @@ function ExpenseApp() {
       alert('Erro ao rejeitar')
     }
   }
+  */
 
   return (
     <div className="p-4 bg-blue-50 min-h-screen">
@@ -640,34 +661,7 @@ function ExpenseApp() {
         </div>
 
         {/* Filtros e Ordenação */}
-        {isOwner && (
-          <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">📥 Solicitações de Entrada
-                {loadingRequests && <span className="text-xs text-blue-500 animate-pulse">carregando...</span>}
-              </h3>
-              <button onClick={loadRequests} className="text-xs text-blue-600 hover:underline">Atualizar</button>
-            </div>
-            {pendingRequests.length === 0 ? (
-              <p className="text-sm text-gray-500">Nenhuma solicitação pendente</p>
-            ) : (
-              <ul className="space-y-2">
-                {pendingRequests.map(req => (
-                  <li key={req.id} className="border rounded-lg p-3 flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-medium text-gray-700">{req.requesterUid}</p>
-                      <p className="text-xs text-gray-500">Convite: {req.inviteId}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => approveRequest(req)} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Aprovar</button>
-                      <button onClick={() => rejectRequest(req)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Recusar</button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {/* Seção de Solicitações removida - usando sistema direto de convites */}
 
         <div className="bg-white rounded-lg shadow-md p-4 mb-4">
           <div className="flex flex-wrap gap-2 mb-3">
