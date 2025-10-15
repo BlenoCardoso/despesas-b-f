@@ -10,7 +10,9 @@ import {
   orderBy, 
   serverTimestamp,
   onSnapshot,
-  Timestamp
+  Timestamp,
+  writeBatch,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Expense } from '../types/firebase-schema';
@@ -25,6 +27,163 @@ export class FirebaseExpenseService {
       FirebaseExpenseService.instance = new FirebaseExpenseService();
     }
     return FirebaseExpenseService.instance;
+  }
+
+  // Excluir TODAS as despesas (soft delete) da household
+  async deleteAllExpenses(householdId: string, userId: string): Promise<number> {
+    try {
+      console.log('🗑️ Deletando todas as despesas da household:', householdId)
+      const q = query(
+        collection(db, 'expenses'),
+        where('householdId', '==', householdId)
+      )
+      const snap = await getDocs(q)
+      if (snap.empty) {
+        console.log('ℹ️ Nenhuma despesa para deletar')
+        return 0
+      }
+
+      let count = 0
+      let batch = writeBatch(db)
+      let ops = 0
+
+      for (const docSnap of snap.docs) {
+        const data: any = docSnap.data()
+        // Pular se já estiver soft-deleted
+        if (data.deletedAt) continue
+        batch.update(doc(db, 'expenses', docSnap.id), {
+          deletedAt: serverTimestamp(),
+          deletedBy: userId,
+          updatedAt: serverTimestamp()
+        })
+        ops++
+        count++
+        // Limite de 500 operações por batch – usamos 450 por segurança
+        if (ops >= 450) {
+          await batch.commit()
+          batch = writeBatch(db)
+          ops = 0
+        }
+      }
+
+      if (ops > 0) {
+        await batch.commit()
+      }
+
+      console.log(`✅ Soft-delete aplicado em ${count} despesas`)
+      return count
+    } catch (error) {
+      console.error('❌ Erro ao deletar todas as despesas:', error)
+      throw error
+    }
+  }
+
+  // Restaurar TODAS as despesas (remover soft delete) da household
+  async restoreAllExpenses(householdId: string): Promise<number> {
+    try {
+      console.log('♻️ Restaurando todas as despesas da household:', householdId)
+      const q = query(
+        collection(db, 'expenses'),
+        where('householdId', '==', householdId)
+      )
+      const snap = await getDocs(q)
+      if (snap.empty) return 0
+
+      let count = 0
+      let batch = writeBatch(db)
+      let ops = 0
+
+      for (const docSnap of snap.docs) {
+        const data: any = docSnap.data()
+        if (!data.deletedAt) continue
+        batch.update(doc(db, 'expenses', docSnap.id), {
+          deletedAt: null,
+          deletedBy: null,
+          updatedAt: serverTimestamp()
+        })
+        ops++
+        count++
+        if (ops >= 450) {
+          await batch.commit()
+          batch = writeBatch(db)
+          ops = 0
+        }
+      }
+
+      if (ops > 0) await batch.commit()
+      console.log(`✅ ${count} despesas restauradas`)
+      return count
+    } catch (error) {
+      console.error('❌ Erro ao restaurar todas as despesas:', error)
+      throw error
+    }
+  }
+
+  // Listar despesas na lixeira (soft-deletadas)
+  async getDeletedExpenses(householdId: string): Promise<Expense[]> {
+    try {
+      const q = query(
+        collection(db, 'expenses'),
+        where('householdId', '==', householdId)
+      )
+      const snap = await getDocs(q)
+      const items = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter((e: any) => !!e.deletedAt)
+        .map((e: any) => ({
+          ...e,
+          createdAt: e.createdAt?.toDate?.() || new Date(),
+          updatedAt: e.updatedAt?.toDate?.() || new Date(),
+        })) as unknown as Expense[]
+      return items
+    } catch (error) {
+      console.error('Erro ao listar despesas deletadas:', error)
+      throw error
+    }
+  }
+
+  // Restaurar uma lista de IDs
+  async restoreExpenses(ids: string[]): Promise<number> {
+    if (!ids.length) return 0
+    let batch = writeBatch(db)
+    let ops = 0
+    let count = 0
+    for (const id of ids) {
+      batch.update(doc(db, 'expenses', id), {
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: serverTimestamp()
+      })
+      ops++
+      count++
+      if (ops >= 450) {
+        await batch.commit()
+        batch = writeBatch(db)
+        ops = 0
+      }
+    }
+    if (ops > 0) await batch.commit()
+    return count
+  }
+
+  // Deletar permanentemente uma lista de IDs
+  async hardDeleteExpenses(ids: string[]): Promise<number> {
+    if (!ids.length) return 0
+    let batch = writeBatch(db)
+    let ops = 0
+    let count = 0
+    for (const id of ids) {
+      batch.delete(doc(db, 'expenses', id))
+      ops++
+      count++
+      if (ops >= 450) {
+        await batch.commit()
+        batch = writeBatch(db)
+        ops = 0
+      }
+    }
+    if (ops > 0) await batch.commit()
+    return count
   }
 
   // Criar despesa

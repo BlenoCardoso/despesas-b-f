@@ -30,6 +30,12 @@ function ExpenseApp() {
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
   const [showActionMenu, setShowActionMenu] = useState<number | null>(null)
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [trashItems, setTrashItems] = useState<any[]>([])
+  const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([])
   const [filter, setFilter] = useState('all') // all, paid, pending, category
   const [sortBy, setSortBy] = useState('date') // date, amount, title
   const [showStats, setShowStats] = useState(false)
@@ -487,6 +493,20 @@ function ExpenseApp() {
         // Reiniciar o listener de despesas para a nova household
         if (currentUser?.uid) {
           startExpensesListener(householdId, currentUser.uid)
+          // Fazer um fetch imediato para popular a lista enquanto o listener inicializa
+          try {
+            const initial = await firebaseExpenseService.getExpenses(householdId)
+            setExpenses(initial.map(exp => ({
+              ...exp,
+              title: exp.description,
+              date: formatDate(exp.createdAt),
+              paidBy: exp.createdBy === currentUser.uid ? 'Você' : 'Parceiro',
+              splitType: 'equal',
+              isPaid: false
+            })))
+          } catch (e) {
+            console.warn('Falha no fetch imediato de despesas após join:', e)
+          }
         }
         
         setShowJoinModal(false)
@@ -594,7 +614,10 @@ function ExpenseApp() {
                   <h2 className="font-semibold text-gray-800">🏠 {currentHousehold?.name || 'Casa B&F'}</h2>
                   <p className="text-sm text-gray-500">{currentHousehold?.members?.length || 2} pessoas compartilhando</p>
                   {currentHousehold && currentUser && (
-                    <p className="mt-1 text-[10px] text-gray-400">uid: {currentUser.uid.slice(0,8)} • owner: {String(currentHousehold.ownerId).slice(0,8)} {currentHousehold.ownerId === currentUser.uid ? '(owner)' : ''}</p>
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-[10px] text-gray-400">uid: {currentUser.uid.slice(0,8)} • owner: {String(currentHousehold.ownerId).slice(0,8)} {currentHousehold.ownerId === currentUser.uid ? '(owner)' : ''}</p>
+                      <p className="text-[10px] text-gray-400">hh: {String(currentHousehold.id).slice(0,8)}…</p>
+                    </div>
                   )}
                 </div>
                 {isOwner ? (
@@ -830,6 +853,60 @@ function ExpenseApp() {
           </button>
         </div>
 
+        {/* Ações em massa */}
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="w-full py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors"
+            >
+              🗑️ Excluir todas as despesas
+            </button>
+            <p className="text-[11px] text-red-500 mt-1 text-center">Somente desta household • ação reversível (soft delete)</p>
+          </div>
+          <div>
+            <button
+              onClick={async () => {
+                if (!currentHousehold) return
+                try {
+                  const count = await firebaseExpenseService.restoreAllExpenses(currentHousehold.id)
+                  alert(`♻️ ${count} despesas restauradas`)
+                } catch (e) {
+                  console.error('Erro ao restaurar todas', e)
+                  alert('❌ Erro ao restaurar despesas')
+                }
+              }}
+              className="w-full py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
+            >
+              ♻️ Restaurar todas
+            </button>
+            <p className="text-[11px] text-emerald-600 mt-1 text-center">Reverte o soft delete de todas as despesas</p>
+          </div>
+          <div className="md:col-span-2">
+            <button
+              onClick={async () => {
+                if (!currentHousehold) return
+                setShowTrash(true)
+                setTrashLoading(true)
+                try {
+                  const items = await firebaseExpenseService.getDeletedExpenses(currentHousehold.id)
+                  setTrashItems(items)
+                  setSelectedTrashIds([])
+                } catch (e) {
+                  console.error('Erro ao abrir lixeira', e)
+                  alert('❌ Erro ao carregar lixeira')
+                  setShowTrash(false)
+                } finally {
+                  setTrashLoading(false)
+                }
+              }}
+              className="w-full py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+            >
+              🧺 Abrir Lixeira
+            </button>
+          </div>
+        </div>
+
         {/* Modal de Adicionar/Editar Despesa */}
         {showModal && (
           <AddExpenseModal 
@@ -841,6 +918,151 @@ function ExpenseApp() {
               setEditingExpense(null)
             }} 
           />
+        )}
+
+        {/* Modal de confirmar EXCLUIR TODAS */}
+        {showDeleteAllModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Excluir todas as despesas?</h3>
+                <p className="text-gray-600 text-sm">Isso vai mover todas as despesas desta household para a lixeira (soft delete). Você pode restaurar depois se necessário.</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                Esta ação não afeta outras households e pode levar alguns segundos se houver muitas despesas.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowDeleteAllModal(false)}
+                  className="py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium disabled:opacity-50"
+                  disabled={deletingAll}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!currentHousehold || !currentUser) return
+                    setDeletingAll(true)
+                    try {
+                      const count = await firebaseExpenseService.deleteAllExpenses(currentHousehold.id, currentUser.uid)
+                      alert(`✅ ${count} despesas movidas para a lixeira`)
+                      setShowDeleteAllModal(false)
+                    } catch (e) {
+                      console.error('Erro ao excluir todas', e)
+                      alert('❌ Erro ao excluir todas as despesas')
+                    } finally {
+                      setDeletingAll(false)
+                    }
+                  }}
+                  className="py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50"
+                  disabled={deletingAll}
+                >
+                  {deletingAll ? '⏳ Excluindo...' : '🗑️ Excluir todas'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Lixeira */}
+        {showTrash && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-800">🧺 Lixeira</h3>
+                <button onClick={() => setShowTrash(false)} className="text-gray-500 text-2xl">×</button>
+              </div>
+              {trashLoading ? (
+                <p className="text-gray-600">Carregando...</p>
+              ) : trashItems.length === 0 ? (
+                <p className="text-gray-600">Nenhuma despesa na lixeira.</p>
+              ) : (
+                <div className="max-h-80 overflow-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="p-2 w-10"><input type="checkbox" onChange={(e) => {
+                          if (e.target.checked) setSelectedTrashIds(trashItems.map((i) => i.id))
+                          else setSelectedTrashIds([])
+                        }} checked={selectedTrashIds.length === trashItems.length && trashItems.length > 0} /></th>
+                        <th className="p-2 text-left">Descrição</th>
+                        <th className="p-2 text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trashItems.map((item) => (
+                        <tr key={item.id} className="border-t">
+                          <td className="p-2 text-center">
+                            <input type="checkbox" checked={selectedTrashIds.includes(item.id)} onChange={(e) => {
+                              setSelectedTrashIds((prev) => e.target.checked ? [...new Set([...prev, item.id])] : prev.filter(id => id !== item.id))
+                            }} />
+                          </td>
+                          <td className="p-2">{item.description}</td>
+                          <td className="p-2 text-right">R$ {Number(item.amount).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      const count = await firebaseExpenseService.restoreExpenses(selectedTrashIds)
+                      setTrashItems(items => items.filter(i => !selectedTrashIds.includes(i.id)))
+                      setSelectedTrashIds([])
+                      alert(`♻️ ${count} restauradas`)
+                    } catch (e) {
+                      console.error('Erro ao restaurar selecionadas', e)
+                      alert('❌ Falha ao restaurar selecionadas')
+                    }
+                  }}
+                  className="py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                  disabled={selectedTrashIds.length === 0}
+                >
+                  ♻️ Restaurar selecionadas
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Tem certeza? Esta ação remove definitivamente os itens selecionados.')) return
+                    try {
+                      const count = await firebaseExpenseService.hardDeleteExpenses(selectedTrashIds)
+                      setTrashItems(items => items.filter(i => !selectedTrashIds.includes(i.id)))
+                      setSelectedTrashIds([])
+                      alert(`🗑️ ${count} removidas definitivamente`)
+                    } catch (e) {
+                      console.error('Erro ao apagar definitivamente', e)
+                      alert('❌ Falha ao apagar definitivamente')
+                    }
+                  }}
+                  className="py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50"
+                  disabled={selectedTrashIds.length === 0}
+                >
+                  🗑️ Apagar definitivamente
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const allIds = trashItems.map(i => i.id)
+                      if (!allIds.length) return
+                      if (!confirm('Esvaziar a lixeira? Esta ação não pode ser desfeita.')) return
+                      const count = await firebaseExpenseService.hardDeleteExpenses(allIds)
+                      setTrashItems([])
+                      setSelectedTrashIds([])
+                      alert(`🧹 Lixeira esvaziada: ${count} itens`) 
+                    } catch (e) {
+                      console.error('Erro ao esvaziar lixeira', e)
+                      alert('❌ Falha ao esvaziar lixeira')
+                    }
+                  }}
+                  className="py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                >
+                  🧹 Esvaziar lixeira
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Modal de Convite Gerado */}
