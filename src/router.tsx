@@ -36,6 +36,11 @@ function ExpenseApp() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [trashItems, setTrashItems] = useState<any[]>([])
   const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([])
+  const [trashFilterCategory, setTrashFilterCategory] = useState<string>('')
+  const [trashFilterFrom, setTrashFilterFrom] = useState<string>('')
+  const [trashFilterTo, setTrashFilterTo] = useState<string>('')
+  const [trashSearch, setTrashSearch] = useState<string>('')
+  const [trashVisible, setTrashVisible] = useState<number>(50)
   const [filter, setFilter] = useState('all') // all, paid, pending, category
   const [sortBy, setSortBy] = useState('date') // date, amount, title
   const [showStats, setShowStats] = useState(false)
@@ -972,25 +977,78 @@ function ExpenseApp() {
                 <h3 className="text-xl font-bold text-gray-800">🧺 Lixeira</h3>
                 <button onClick={() => setShowTrash(false)} className="text-gray-500 text-2xl">×</button>
               </div>
+              {/* Filtros */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input
+                  placeholder="Pesquisar descrição"
+                  value={trashSearch}
+                  onChange={(e) => setTrashSearch(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-lg text-sm"
+                />
+                <select
+                  value={trashFilterCategory}
+                  onChange={(e) => setTrashFilterCategory(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Todas categorias</option>
+                  {Array.from(new Set(trashItems.map(i => i.category).filter(Boolean))).map(cat => (
+                    <option key={cat} value={cat}>{String(cat).toString()}</option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={trashFilterFrom}
+                  onChange={(e) => setTrashFilterFrom(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-lg text-sm"
+                />
+                <input
+                  type="date"
+                  value={trashFilterTo}
+                  onChange={(e) => setTrashFilterTo(e.target.value)}
+                  className="p-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
               {trashLoading ? (
                 <p className="text-gray-600">Carregando...</p>
               ) : trashItems.length === 0 ? (
                 <p className="text-gray-600">Nenhuma despesa na lixeira.</p>
               ) : (
                 <div className="max-h-80 overflow-auto border rounded-lg">
-                  <table className="w-full text-sm">
+                  {(() => {
+                    // Aplicar filtros
+                    let list = trashItems.slice()
+                    if (trashSearch.trim()) {
+                      const s = trashSearch.trim().toLowerCase()
+                      list = list.filter(i => String(i.description || '').toLowerCase().includes(s))
+                    }
+                    if (trashFilterCategory) {
+                      list = list.filter(i => i.category === trashFilterCategory)
+                    }
+                    if (trashFilterFrom) {
+                      const from = new Date(trashFilterFrom)
+                      list = list.filter(i => new Date(i.createdAt) >= from)
+                    }
+                    if (trashFilterTo) {
+                      const to = new Date(trashFilterTo)
+                      to.setHours(23,59,59,999)
+                      list = list.filter(i => new Date(i.createdAt) <= to)
+                    }
+                    const display = list.slice(0, trashVisible)
+                    return (
+                      <>
+                        <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr>
                         <th className="p-2 w-10"><input type="checkbox" onChange={(e) => {
-                          if (e.target.checked) setSelectedTrashIds(trashItems.map((i) => i.id))
+                          if (e.target.checked) setSelectedTrashIds(display.map((i) => i.id))
                           else setSelectedTrashIds([])
-                        }} checked={selectedTrashIds.length === trashItems.length && trashItems.length > 0} /></th>
+                        }} checked={display.length > 0 && selectedTrashIds.length === display.length} /></th>
                         <th className="p-2 text-left">Descrição</th>
                         <th className="p-2 text-right">Valor</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {trashItems.map((item) => (
+                        <tbody>
+                      {display.map((item) => (
                         <tr key={item.id} className="border-t">
                           <td className="p-2 text-center">
                             <input type="checkbox" checked={selectedTrashIds.includes(item.id)} onChange={(e) => {
@@ -1001,8 +1059,21 @@ function ExpenseApp() {
                           <td className="p-2 text-right">R$ {Number(item.amount).toFixed(2)}</td>
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
+                        </tbody>
+                      </table>
+                      {display.length < list.length && (
+                        <div className="p-2 flex justify-center">
+                          <button
+                            onClick={() => setTrashVisible(v => v + 50)}
+                            className="px-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100"
+                          >
+                            Carregar mais
+                          </button>
+                        </div>
+                      )}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
