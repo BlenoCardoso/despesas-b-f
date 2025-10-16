@@ -51,27 +51,60 @@ service cloud.firestore {
         // O criador deve ser o ownerId
         request.auth.uid == request.resource.data.ownerId;
       
-      // Membros podem atualizar. Também permitimos que um usuário se adicione
-      // à household (self-join) APENAS quando a única alteração for adicionar
-      // o próprio UID ao array members. Isso é necessário para aceitar convites
-      // no cliente sem Cloud Functions.
-      allow update: if (
-        // Regra padrão: quem já é membro pode atualizar
-        isHouseholdMember(householdId)
-      ) || (
-        // Exceção controlada: permitir auto-entrada
-        isSignedIn() &&
-        // Não era membro antes
-        !(request.auth.uid in resource.data.members) &&
-        // Passa a ser membro depois
-        request.auth.uid in request.resource.data.members &&
-        // Tamanho de members aumenta exatamente em 1
-        request.resource.data.members.size() == resource.data.members.size() + 1 &&
-        // Ninguém é removido (o conjunto anterior é subconjunto do novo)
-        request.resource.data.members.toSet().hasAll(resource.data.members.toSet()) &&
-        // Somente campos permitidos foram alterados
-        resource.data.diff(request.resource.data).changedKeys().hasOnly(['members', 'updatedAt', 'updatedBy'])
-      );
+      // Membros podem atualizar, com proteções:
+      // - Atualizações gerais por membros NÃO podem tocar em 'members' nem 'ownerId';
+      // - Exceções controladas: self-join (entrar) e self-leave (sair de si mesmo);
+      // - Dono (ownerId) não pode "sair" removendo a si mesmo dos members.
+      allow update: if
+        (
+          // A) Atualizações gerais por membros (sem tocar em members/ownerId)
+          isHouseholdMember(householdId) &&
+          !resource.data.diff(request.resource.data).changedKeys().hasAny(['members', 'ownerId'])
+        ) || (
+          // B) Exceção controlada: permitir auto-entrada (self-join)
+          isSignedIn() &&
+          // Não era membro antes
+          !(request.auth.uid in resource.data.members) &&
+          // Passa a ser membro depois
+          request.auth.uid in request.resource.data.members &&
+          // Tamanho de members aumenta exatamente em 1
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          // Ninguém é removido (o conjunto anterior é subconjunto do novo)
+          request.resource.data.members.toSet().hasAll(resource.data.members.toSet()) &&
+          // Somente campos permitidos foram alterados
+          resource.data.diff(request.resource.data).changedKeys().hasOnly(['members', 'updatedAt', 'updatedBy'])
+        ) || (
+          // C) Exceção controlada: permitir auto-saída (self-leave)
+          isSignedIn() &&
+          // Era membro antes
+          (request.auth.uid in resource.data.members) &&
+          // Após a atualização, não está mais em members
+          !(request.auth.uid in request.resource.data.members) &&
+          // O dono não pode sair diretamente (precisa transferir ou deletar)
+          resource.data.ownerId != request.auth.uid &&
+          // O novo set é subconjunto do anterior (ninguém novo foi adicionado)
+          resource.data.members.toSet().hasAll(request.resource.data.members.toSet()) &&
+          // Exatamente 1 membro a menos
+          request.resource.data.members.size() == resource.data.members.size() - 1 &&
+          // Apenas campos permitidos foram alterados
+          resource.data.diff(request.resource.data).changedKeys().hasOnly(['members', 'updatedAt', 'updatedBy'])
+        ) || (
+          // D) Exceção controlada: transferência de propriedade (ownerId)
+          isSignedIn() &&
+          // Somente o owner atual pode transferir
+          request.auth.uid == resource.data.ownerId &&
+          // ownerId realmente muda
+          request.resource.data.ownerId != resource.data.ownerId &&
+          // Novo owner precisa ser membro (antes ou depois)
+          (
+            (request.resource.data.ownerId in resource.data.members) ||
+            (request.resource.data.ownerId in request.resource.data.members)
+          ) &&
+          // Não alterar membros nesta operação (transferência pura)
+          request.resource.data.members == resource.data.members &&
+          // Apenas os campos permitidos foram alterados
+          resource.data.diff(request.resource.data).changedKeys().hasOnly(['ownerId', 'updatedAt', 'updatedBy'])
+        );
       
       // Apenas o owner pode deletar
       allow delete: if isSignedIn() && 

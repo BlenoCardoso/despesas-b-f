@@ -1,4 +1,4 @@
-import{r as y,_ as T,C as b,a as S,E as G,o as me,F as H,g as we,b as K,d as Ie,L as ye,i as Te,c as be,v as Ae,e as N,f as ve}from"./index-BUnHGMgc.js";const W="@firebase/installations",D="0.6.19";/**
+import{r as y,_ as T,C as b,a as S,E as G,o as me,F as H,g as we,b as K,d as Ie,L as ye,i as Te,c as be,v as Ae,e as N,f as ve}from"./index-ClzdhWDs.js";const W="@firebase/installations",D="0.6.19";/**
  * @license
  * Copyright 2019 Google LLC
  *
@@ -13,7 +13,7 @@ import{r as y,_ as T,C as b,a as S,E as G,o as me,F as H,g as we,b as K,d as Ie,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */const Y=1e4,J=`w:${D}`,X="FIS_v2",Se="https://firebaseinstallations.googleapis.com/v1",ke=60*60*1e3,Ee="installations",Ce="Installations";/**
+ */const Y=1e4,J=`w:${D}`,X="FIS_v2",Se="https://firebaseinstallations.googleapis.com/v1",ke=3600*1e3,Ee="installations",Ce="Installations";/**
  * @license
  * Copyright 2019 Google LLC
  *

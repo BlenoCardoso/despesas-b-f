@@ -47,15 +47,15 @@ export default function QuickInviteTestPage() {
       // Criar convite diretamente via householdService
       const invite = await householdService.createInvite({
         householdId: testHouseholdId,
-        createdBy: user.uid || user.id,
+        createdBy: (user as any).uid || (user as any).id,
         expiresInHours: 24,
         maxUses: 5
       })
 
       addLog(`✅ Convite criado com sucesso!`)
       addLog(`🎟️ Código: ${invite.code}`)
-      addLog(`🔗 Link PC: http://localhost:5173/convite/${invite.code}`)
-      addLog(`📱 Link Mobile: http://192.168.1.9:5173/convite/${invite.code}`)
+  addLog(`🔗 Link PC: http://localhost:5174/convite/${invite.code}`)
+  addLog(`📱 Link Mobile: http://192.168.1.9:5174/convite/${invite.code}`)
 
       setGeneratedCode(invite.code)
       toast.success(`Convite criado: ${invite.code}`)
@@ -102,7 +102,7 @@ export default function QuickInviteTestPage() {
   }
 
   const openInviteLink = (code: string) => {
-    const url = `http://localhost:5173/convite/${code}`
+  const url = `http://localhost:5174/convite/${code}`
     window.open(url, '_blank')
   }
 

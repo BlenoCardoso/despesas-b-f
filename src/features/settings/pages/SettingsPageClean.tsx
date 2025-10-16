@@ -8,7 +8,7 @@ import {
   LogOut,
   Download,
   Users,
-  ShieldCheck
+  Shield
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,7 @@ export function SettingsPage() {
 
   // Carregar configurações
   useEffect(() => {
-    if (household?.settings) {
+    if ((household as any)?.settings) {
       setCanEditSetting((household as any).settings.canEditOthersExpenses || 'owner-admin')
     }
   }, [household])
@@ -139,7 +139,9 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ImprovedInviteSystem />
+          {household && (
+            <ImprovedInviteSystem householdId={(household as any).id} />
+          )}
         </CardContent>
       </Card>
 
@@ -155,7 +157,9 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <MembersManager />
+          {household && (
+            <MembersManager householdId={(household as any).id} />
+          )}
         </CardContent>
       </Card>
 
@@ -164,7 +168,7 @@ export function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" />
+              <Shield className="h-5 w-5" />
               Permissões
             </CardTitle>
             <CardDescription>

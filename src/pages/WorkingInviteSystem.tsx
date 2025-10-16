@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { householdService } from '@/features/households/services/householdService'
 import { authService } from '@/services/authService'
 import { toast } from 'sonner'
-import { Copy, ExternalLink, Users, Plus } from 'lucide-react'
+import { Copy, Users, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function WorkingInviteSystem() {
@@ -47,13 +47,15 @@ export default function WorkingInviteSystem() {
       // Gerar convite via householdService (método confiável)
       const invite = await householdService.createInvite({
         householdId: testHouseholdId,
-        createdBy: user.uid || user.id,
+        createdBy: (user as any).uid || (user as any).id,
         expiresInHours: 168, // 7 dias
         maxUses: 10
       })
 
       addLog(`✅ Convite criado: ${invite.code}`)
-      addLog(`🏠 Household: ${invite.householdId}`)
+      if ((invite as any).householdId) {
+        addLog(`🏠 Household: ${(invite as any).householdId}`)
+      }
       
       setGeneratedCode(invite.code)
       toast.success(`Convite criado: ${invite.code}`)
@@ -171,12 +173,7 @@ export default function WorkingInviteSystem() {
                   <Copy className="h-4 w-4 mr-1" />
                   Copiar Código
                 </Button>
-                <Button 
-                  size="sm" 
-                  onClick={() => openLink(generatedCode)}
-                  variant="outline"
-                >
-                  <ExternalLink className="h-4 w-4 mr-1" />
+                <Button size="sm" onClick={() => openLink(generatedCode)} variant="outline">
                   Abrir Link
                 </Button>
                 <Button 

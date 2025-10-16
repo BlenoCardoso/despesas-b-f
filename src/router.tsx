@@ -1,8 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom'
+import { toast } from 'sonner'
 import { useState, useEffect, useRef } from 'react'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { firebaseExpenseService } from './services/firebaseExpenseService'
 import { firebaseHouseholdService } from './services/firebaseHouseholdService'
+import { firebaseHouseholdService as firebaseHouseholdServiceComplete } from './services/firebaseHouseholdServiceComplete'
+import { firebaseUserService } from './services/firebaseUserService'
 import { householdService } from './services/householdService'
 import { shareInviteService } from './services/shareInviteService'
 import { auth } from './config/firebase'
@@ -47,6 +50,18 @@ function ExpenseApp() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
+  const [showLeaveModal, setShowLeaveModal] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [showSwitcher, setShowSwitcher] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const [myHouseholds, setMyHouseholds] = useState<any[]>([])
+  const [showOnlyOnline, setShowOnlyOnline] = useState(false)
+  const [onlineCounts, setOnlineCounts] = useState<Record<string, number>>({})
+  const [showTransferModal, setShowTransferModal] = useState<{open: boolean; household?: any; note?: string}>({ open: false })
+  const [transferCandidates, setTransferCandidates] = useState<any[]>([])
+  const [transferTo, setTransferTo] = useState<string>('')
+  const [transferring, setTransferring] = useState(false)
+  const [pendingLeaveAfterTransferHouseholdId, setPendingLeaveAfterTransferHouseholdId] = useState<string | null>(null)
   // Guardar unsubscribe do listener de despesas para podermos trocar de household
   const expensesUnsubRef = useRef<null | (() => void)>(null)
   
@@ -67,6 +82,13 @@ function ExpenseApp() {
         if (!currentHousehold) {
           await initializeDemo(user.uid)
         }
+        // Iniciar heartbeat de presença (atualiza lastSeen periodicamente)
+        try { await firebaseUserService.updateLastSeen(user.uid) } catch {}
+        const id = window.setInterval(() => {
+          firebaseUserService.updateLastSeen(user.uid).catch(() => {})
+        }, 30_000)
+        // Cleanup do heartbeat
+        return () => window.clearInterval(id)
       } else {
         try {
           await signInAnonymously(auth)
@@ -181,6 +203,28 @@ function ExpenseApp() {
     expensesUnsubRef.current = unsub
   }
 
+  // Calcula quantos membros estão online por household (lastSeen < 2min), exceto você
+  const computeOnlineCounts = async (households: any[], currentUid: string) => {
+    const counts: Record<string, number> = {}
+    const now = Date.now()
+    const ONLINE_WINDOW_MS = 2 * 60 * 1000
+    for (const hh of households) {
+      try {
+        const users = await firebaseUserService.getHouseholdMembers(hh.id)
+        const online = users.filter(u => {
+          if (u.id === currentUid) return false
+          const seen = (u as any).lastSeen instanceof Date ? (u as any).lastSeen.getTime() : (u as any).lastSeen?.toMillis?.() || 0
+          return seen && (now - seen) <= ONLINE_WINDOW_MS
+        }).length
+        counts[hh.id] = online
+      } catch {
+        counts[hh.id] = 0
+      }
+    }
+    setOnlineCounts(counts)
+    return counts
+  }
+
   // Cleanup ao desmontar componente
   useEffect(() => {
     return () => {
@@ -190,6 +234,25 @@ function ExpenseApp() {
       }
     }
   }, [])
+
+  // Ativar uma household como atual (persistir + listener + prefetch)
+  const setActiveHousehold = async (householdId: string, userId: string) => {
+    try { if (typeof window !== 'undefined') localStorage.setItem('currentHouseholdId', householdId) } catch {}
+    const hh = await firebaseHouseholdService.getHouseholdById(householdId)
+    setCurrentHousehold(hh)
+    startExpensesListener(householdId, userId)
+    try {
+      const initial = await firebaseExpenseService.getExpenses(householdId)
+      setExpenses(initial.map(exp => ({
+        ...exp,
+        title: exp.description,
+        date: formatDate(exp.createdAt),
+        paidBy: exp.createdBy === userId ? 'Você' : 'Parceiro',
+        splitType: 'equal',
+        isPaid: false
+      })))
+    } catch {}
+  }
 
   // Criar despesas demo no Firebase
   const createDemoExpenses = async (householdId: string, userId: string) => {
@@ -430,19 +493,19 @@ function ExpenseApp() {
   const generateInviteCode = async () => {
     if (!currentHousehold) {
       console.warn('⚠️ Nenhuma household atual para gerar convite')
-      alert('Ainda carregando a casa. Tente de novo em alguns segundos.')
+  toast.info('Ainda carregando a casa. Tente de novo em alguns segundos.')
       return
     }
     if (!currentUser) {
-      alert('Usuário não autenticado ainda. Aguarde...')
+  toast.info('Usuário não autenticado ainda. Aguarde...')
       return
     }
     if (!navigator.onLine) {
-      alert('Você está offline. Conecte-se à internet para gerar convite.')
+  toast.error('Você está offline. Conecte-se à internet para gerar convite.')
       return
     }
     if (currentHousehold.ownerId !== currentUser.uid) {
-      alert('Apenas o proprietário (ou admin) pode gerar convites.')
+  toast.error('Apenas o proprietário (ou admin) pode gerar convites.')
       return
     }
     console.log('🧪 Clique em Convidar. Household:', currentHousehold.id, 'User:', currentUser.uid)
@@ -466,7 +529,7 @@ function ExpenseApp() {
     } catch (error: any) {
       console.error('❌ Erro ao gerar código:', error)
       setInviteCode('ERRO')
-      alert(`❌ Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
+  toast.error(`Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
     } finally {
       setInviteGenerating(false)
     }
@@ -515,13 +578,13 @@ function ExpenseApp() {
         }
         
         setShowJoinModal(false)
-        alert('✅ Você entrou na household com sucesso!')
+  toast.success('Você entrou na household com sucesso!')
       } else {
-        alert('❌ Código inválido ou expirado.')
+  toast.error('Código inválido ou expirado.')
       }
     } catch (error: any) {
       console.error('❌ Erro ao aceitar convite:', error)
-      alert(`❌ Erro: ${error?.message || 'Código inválido'}`)
+  toast.error(`Erro: ${error?.message || 'Código inválido'}`)
     }
   }
 
@@ -625,17 +688,65 @@ function ExpenseApp() {
                     </div>
                   )}
                 </div>
-                {isOwner ? (
-                  <button 
-                    onClick={generateInviteCode}
-                    disabled={!currentHousehold || inviteGenerating}
-                    className="text-blue-600 disabled:text-gray-400 disabled:cursor-not-allowed text-sm font-medium hover:bg-blue-50 px-2 py-1 rounded"
+                <div className="flex items-center gap-2">
+                  {isOwner ? (
+                    <button 
+                      onClick={generateInviteCode}
+                      disabled={!currentHousehold || inviteGenerating}
+                      className="text-blue-600 disabled:text-gray-400 disabled:cursor-not-allowed text-sm font-medium hover:bg-blue-50 px-2 py-1 rounded"
+                    >
+                      {inviteGenerating ? '⏳...' : '👥 Convidar'}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-400" title="Apenas proprietário ou admin pode gerar convites">sem permissão</span>
+                  )}
+                  {isOwner && (
+                    <button
+                      onClick={async () => {
+                        if (!currentUser || !currentHousehold) return
+                        try {
+                          const users = await firebaseUserService.getHouseholdMembers(currentHousehold.id)
+                          const candidates = users.filter(u => u.id !== currentUser.uid)
+                          setTransferCandidates(candidates)
+                          setTransferTo(candidates[0]?.id || '')
+                          setShowTransferModal({ open: true, household: currentHousehold })
+                        } catch (e) {
+                          console.error('Erro ao carregar membros', e)
+                          toast.error('Não foi possível carregar os membros para transferir')
+                        }
+                      }}
+                      className="text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-sm font-medium px-2 py-1 rounded"
+                      title="Transferir propriedade"
+                    >
+                      🔑 Transferir
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      if (!currentUser) return
+                      setShowSwitcher(true)
+                      try {
+                        const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                        setMyHouseholds(list)
+                        // Recalcular presença online dos membros (sem contar você)
+                        try { await computeOnlineCounts(list, currentUser.uid) } catch {}
+                      } catch (e) {
+                        console.error('Erro ao carregar households do usuário', e)
+                      }
+                    }}
+                    className="text-gray-700 text-sm font-medium hover:bg-gray-100 px-2 py-1 rounded"
+                    title="Trocar de casa"
                   >
-                    {inviteGenerating ? '⏳...' : '👥 Convidar'}
+                    ⇄ Trocar
                   </button>
-                ) : (
-                  <span className="text-xs text-gray-400" title="Apenas proprietário ou admin pode gerar convites">sem permissão</span>
-                )}
+                  <button
+                    onClick={() => setShowLeaveModal(true)}
+                    className="text-red-600 text-sm font-medium hover:bg-red-50 px-2 py-1 rounded"
+                    title="Sair do compartilhamento desta household"
+                  >
+                    🚪 Sair
+                  </button>
+                </div>
               </div>
             </div>
         
@@ -852,7 +963,7 @@ function ExpenseApp() {
           </button>
           <button 
             className="bg-gray-100 text-gray-700 font-semibold py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
-            onClick={() => alert('📊 Relatórios em breve!')}
+            onClick={() => toast('📊 Relatórios em breve!')}
           >
             📊 Relatórios
           </button>
@@ -875,10 +986,10 @@ function ExpenseApp() {
                 if (!currentHousehold) return
                 try {
                   const count = await firebaseExpenseService.restoreAllExpenses(currentHousehold.id)
-                  alert(`♻️ ${count} despesas restauradas`)
+                  toast.success(`♻️ ${count} despesas restauradas`)
                 } catch (e) {
                   console.error('Erro ao restaurar todas', e)
-                  alert('❌ Erro ao restaurar despesas')
+                  toast.error('Erro ao restaurar despesas')
                 }
               }}
               className="w-full py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
@@ -899,7 +1010,7 @@ function ExpenseApp() {
                   setSelectedTrashIds([])
                 } catch (e) {
                   console.error('Erro ao abrir lixeira', e)
-                  alert('❌ Erro ao carregar lixeira')
+                  toast.error('Erro ao carregar lixeira')
                   setShowTrash(false)
                 } finally {
                   setTrashLoading(false)
@@ -950,11 +1061,11 @@ function ExpenseApp() {
                     setDeletingAll(true)
                     try {
                       const count = await firebaseExpenseService.deleteAllExpenses(currentHousehold.id, currentUser.uid)
-                      alert(`✅ ${count} despesas movidas para a lixeira`)
+                      toast.success(`✅ ${count} despesas movidas para a lixeira`)
                       setShowDeleteAllModal(false)
                     } catch (e) {
                       console.error('Erro ao excluir todas', e)
-                      alert('❌ Erro ao excluir todas as despesas')
+                      toast.error('Erro ao excluir todas as despesas')
                     } finally {
                       setDeletingAll(false)
                     }
@@ -1083,10 +1194,10 @@ function ExpenseApp() {
                       const count = await firebaseExpenseService.restoreExpenses(selectedTrashIds)
                       setTrashItems(items => items.filter(i => !selectedTrashIds.includes(i.id)))
                       setSelectedTrashIds([])
-                      alert(`♻️ ${count} restauradas`)
+                      toast.success(`♻️ ${count} restauradas`)
                     } catch (e) {
                       console.error('Erro ao restaurar selecionadas', e)
-                      alert('❌ Falha ao restaurar selecionadas')
+                      toast.error('Falha ao restaurar selecionadas')
                     }
                   }}
                   className="py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-50"
@@ -1101,7 +1212,7 @@ function ExpenseApp() {
                       const count = await firebaseExpenseService.hardDeleteExpenses(selectedTrashIds)
                       setTrashItems(items => items.filter(i => !selectedTrashIds.includes(i.id)))
                       setSelectedTrashIds([])
-                      alert(`🗑️ ${count} removidas definitivamente`)
+                      toast.success(`🗑️ ${count} removidas definitivamente`)
                     } catch (e) {
                       console.error('Erro ao apagar definitivamente', e)
                       alert('❌ Falha ao apagar definitivamente')
@@ -1130,6 +1241,248 @@ function ExpenseApp() {
                   className="py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
                 >
                   🧹 Esvaziar lixeira
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Trocar de Casa */}
+        {showSwitcher && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-800">⇄ Trocar de Casa</h3>
+                <button onClick={() => setShowSwitcher(false)} className="text-gray-500 text-2xl">×</button>
+              </div>
+              {(!myHouseholds || myHouseholds.length === 0) ? (
+                <div className="text-center text-gray-600">
+                  <p>Você ainda não tem outras casas.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-auto">
+                  {/* Filtro: Somente com alguém online */}
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm text-gray-600 flex items-center gap-2">
+                      <input type="checkbox" checked={showOnlyOnline} onChange={(e) => setShowOnlyOnline(e.target.checked)} />
+                      Somente com alguém online
+                    </label>
+                    <button
+                      onClick={async () => {
+                        if (!currentUser) return
+                        try { await computeOnlineCounts(myHouseholds, currentUser.uid) } catch {}
+                      }}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Atualizar
+                    </button>
+                  </div>
+                  {myHouseholds
+                    .filter(hh => !showOnlyOnline || (onlineCounts[hh.id] || 0) > 0)
+                    .map((hh) => (
+                    <div key={hh.id} className={`p-3 border rounded-lg flex items-center justify-between ${currentHousehold?.id === hh.id ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                      <div>
+                        <p className="font-medium text-gray-800">{hh.name || 'Casa'}</p>
+                        <p className="text-xs text-gray-500">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o owner' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            if (!currentUser) return
+                            setSwitching(true)
+                            try {
+                              await setActiveHousehold(hh.id, currentUser.uid)
+                              setShowSwitcher(false)
+                            } finally { setSwitching(false) }
+                          }}
+                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          disabled={switching || currentHousehold?.id === hh.id}
+                        >
+                          {currentHousehold?.id === hh.id ? 'Atual' : 'Usar'}
+                        </button>
+                        {currentUser && hh.ownerId === currentUser.uid && (
+                          <button
+                            onClick={async () => {
+                              if (!currentUser) return
+                              try {
+                                // Carregar membros candidatos (todos menos você)
+                                const users = await firebaseUserService.getHouseholdMembers(hh.id)
+                                const candidates = users.filter(u => u.id !== currentUser.uid)
+                                setTransferCandidates(candidates)
+                                setTransferTo(candidates[0]?.id || '')
+                                setShowTransferModal({ open: true, household: hh })
+                              } catch (e) {
+                                console.error('Erro ao carregar membros', e)
+                                toast.error('Não foi possível carregar os membros para transferir')
+                              }
+                            }}
+                            className="px-3 py-1 text-sm bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100"
+                          >
+                            Transferir
+                          </button>
+                        )}
+                        <button
+                          onClick={async () => {
+                            if (!currentUser) return
+                            if (hh.ownerId === currentUser.uid) {
+                              // Abrir modal de transferência e, após transferir, sair automaticamente
+                              try {
+                                const users = await firebaseUserService.getHouseholdMembers(hh.id)
+                                const candidates = users.filter(u => u.id !== currentUser.uid)
+                                setTransferCandidates(candidates)
+                                setTransferTo(candidates[0]?.id || '')
+                                setPendingLeaveAfterTransferHouseholdId(hh.id)
+                                setShowTransferModal({ open: true, household: hh, note: 'Após transferir a propriedade, você sairá automaticamente desta casa.' })
+                              } catch (e) {
+                                console.error('Erro ao carregar membros', e)
+                                toast.error('Não foi possível carregar os membros para transferir')
+                              }
+                              return
+                            }
+                            if (!confirm(`Sair de "${hh.name || 'Casa'}"?`)) return
+                            setSwitching(true)
+                            try {
+                              // Se for a casa atual, reaproveitar o fluxo de sair do compartilhamento
+                              if (currentHousehold?.id === hh.id) {
+                                await householdService.leaveHousehold(hh.id)
+                                const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                                let nextId: string
+                                if (list.length > 0) nextId = list[0].id
+                                else nextId = await firebaseHouseholdService.createHousehold('Minha Casa', currentUser.uid)
+                                await setActiveHousehold(nextId, currentUser.uid)
+                              } else {
+                                // Sair de uma casa que não é a atual
+                                await firebaseHouseholdService.removeMemberFromHousehold(hh.id, currentUser.uid)
+                                const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                                setMyHouseholds(list)
+                              }
+                              toast.success('🚪 Você saiu da casa selecionada.')
+                            } catch (e) {
+                              console.error('Erro ao sair da casa', e)
+                              toast.error('Falha ao sair da casa')
+                            } finally {
+                              setSwitching(false)
+                            }
+                          }}
+                          className="px-3 py-1 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100"
+                        >
+                          Sair
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  onClick={async () => {
+                    if (!currentUser) return
+                    setSwitching(true)
+                    try {
+                      const newId = await firebaseHouseholdService.createHousehold('Nova Casa', currentUser.uid)
+                      await setActiveHousehold(newId, currentUser.uid)
+                      setShowSwitcher(false)
+                    } catch (e) { console.error('Erro ao criar nova casa', e) }
+                    finally { setSwitching(false) }
+                  }}
+                  className="w-full py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50"
+                  disabled={switching}
+                >
+                  ➕ Criar nova casa
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Transferir Propriedade */}
+        {showTransferModal.open && showTransferModal.household && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-800">Transferir propriedade</h3>
+                <button onClick={() => setShowTransferModal({ open: false })} className="text-gray-500 text-2xl">×</button>
+              </div>
+              <p className="text-sm text-gray-600">Selecione um membro para se tornar o novo proprietário da casa “{showTransferModal.household.name || 'Casa'}”.</p>
+              {showTransferModal.note && (
+                <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">{showTransferModal.note}</div>
+              )}
+              {transferCandidates.length === 0 ? (
+                <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 text-sm">
+                  É necessário ao menos um outro membro para transferir a propriedade.
+                </div>
+              ) : (
+                <select
+                  value={transferTo}
+                  onChange={(e) => setTransferTo(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {transferCandidates.map(u => (
+                    <option key={u.id} value={u.id}>{u.name || u.email || u.id}</option>
+                  ))}
+                </select>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowTransferModal({ open: false })}
+                  className="py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium"
+                  disabled={transferring}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!currentUser || !showTransferModal.household) return
+                    if (!transferTo) { toast('Escolha um membro'); return }
+                    setTransferring(true)
+                    try {
+                      await firebaseHouseholdServiceComplete.transferOwnership(showTransferModal.household.id, currentUser.uid, transferTo)
+                      // Atualizar lista e household atual, se pertinente
+                      const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                      setMyHouseholds(list)
+                      if (currentHousehold?.id === showTransferModal.household.id) {
+                        const hh = await firebaseHouseholdService.getHouseholdById(showTransferModal.household.id)
+                        setCurrentHousehold(hh)
+                      }
+                      // Se estava marcado para sair após transferir, executa a saída agora
+                      const shouldLeave = pendingLeaveAfterTransferHouseholdId === showTransferModal.household.id
+                      setShowTransferModal({ open: false })
+                      if (shouldLeave) {
+                        try {
+                          // Se é a casa atual, usar fluxo de saída com mudança para outra casa
+                          if (currentHousehold?.id === showTransferModal.household.id) {
+                            await householdService.leaveHousehold(showTransferModal.household.id)
+                            const list2 = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                            let nextId: string
+                            if (list2.length > 0) nextId = list2[0].id
+                            else nextId = await firebaseHouseholdService.createHousehold('Minha Casa', currentUser.uid)
+                            await setActiveHousehold(nextId, currentUser.uid)
+                          } else {
+                            await firebaseHouseholdService.removeMemberFromHousehold(showTransferModal.household.id, currentUser.uid)
+                            const list2 = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                            setMyHouseholds(list2)
+                          }
+                          toast.success('🚪 Você saiu da casa após transferir a propriedade.')
+                        } catch (e) {
+                          console.error('Erro ao sair após transferir', e)
+                          toast.error('Propriedade transferida, mas houve falha ao sair. Tente sair novamente.')
+                        } finally {
+                          setPendingLeaveAfterTransferHouseholdId(null)
+                        }
+                      } else {
+                        toast.success('✅ Propriedade transferida! Agora você pode sair, se quiser.')
+                      }
+                    } catch (e: any) {
+                      console.error('Erro ao transferir propriedade', e)
+                      toast.error(`Falha ao transferir: ${e?.message || 'erro'}`)
+                    } finally {
+                      setTransferring(false)
+                    }
+                  }}
+                  className="py-2.5 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 disabled:opacity-50"
+                  disabled={transferring || transferCandidates.length === 0}
+                >
+                  {transferring ? '⏳ Transferindo...' : 'Transferir'}
                 </button>
               </div>
             </div>
@@ -1172,6 +1525,66 @@ function ExpenseApp() {
                   className="py-2 border border-gray-300 text-gray-700 rounded-lg font-medium text-sm"
                 >
                   Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Sair do Compartilhamento */}
+        {showLeaveModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Sair do modo compartilhado?</h3>
+                {isOwner ? (
+                  <p className="text-sm text-red-600">Você é o proprietário desta household e não pode sair diretamente. Transfira a propriedade para outro membro antes de sair.</p>
+                ) : (
+                  <p className="text-sm text-gray-600">Você deixará de ver e compartilhar as despesas desta household. Vamos te mover para uma casa pessoal (privada) automaticamente.</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowLeaveModal(false)}
+                  className="py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium"
+                  disabled={leaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!currentHousehold || !currentUser) return
+                    if (isOwner) { setShowLeaveModal(false); return }
+                    setLeaving(true)
+                    try {
+                      await householdService.leaveHousehold(currentHousehold.id)
+                      // Escolher próxima household (se houver) ou criar uma pessoal
+                      const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                      let nextId: string
+                      if (list.length > 0) {
+                        nextId = list[0].id
+                      } else {
+                        nextId = await firebaseHouseholdService.createHousehold('Minha Casa', currentUser.uid)
+                      }
+                      // Persistir e reconfigurar listener
+                      try { if (typeof window !== 'undefined') localStorage.setItem('currentHouseholdId', nextId) } catch {}
+                      const nextHh = await firebaseHouseholdService.getHouseholdById(nextId)
+                      setCurrentHousehold(nextHh)
+                      startExpensesListener(nextId, currentUser.uid)
+                      setExpenses([])
+                      setShowLeaveModal(false)
+                      alert('🚪 Você saiu do compartilhamento. Agora está na sua casa pessoal.')
+                    } catch (e: any) {
+                      console.error('Erro ao sair do compartilhamento', e)
+                      alert(`❌ ${e?.message || 'Falha ao sair'}`)
+                    } finally {
+                      setLeaving(false)
+                    }
+                  }}
+                  className="py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50"
+                  disabled={leaving || isOwner}
+                >
+                  {leaving ? '⏳ Saindo...' : '🚪 Sair do compartilhamento'}
                 </button>
               </div>
             </div>
