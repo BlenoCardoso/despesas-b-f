@@ -309,8 +309,8 @@ function ExpenseApp() {
       unsubscribe = firebaseUserService.subscribeToHouseholdMembers(currentHousehold.id, (users) => {
         setHouseholdMembers(users)
         const now = Date.now()
+        // Include current user as well so everyone (including the owner) sees online badges consistently
         const online = users.filter((u: any) => {
-          if (u.id === currentUser?.uid) return false
           const seen = u.lastSeen instanceof Date ? u.lastSeen.getTime() : (u as any).lastSeen?.toMillis?.() || 0
           return seen && (now - seen) <= ONLINE_WINDOW_MS
         })
@@ -886,12 +886,11 @@ function ExpenseApp() {
                       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
                         {(() => {
                           const onlineIds = new Set(onlineNow.map((u: any) => u.id))
-                          const members = householdMembers
-                            .filter((m: any) => m.id !== currentUser?.uid)
-                            .filter((m: any) => !showOnlyOnlineHome || onlineIds.has(m.id))
+                          // Show all household members (including the current user) so everyone sees the same list
+                          const members = householdMembers.filter((m: any) => !showOnlyOnlineHome || onlineIds.has(m.id))
                           if (members.length === 0) {
                             return (
-                              <span className="text-[11px] text-gray-500">{showOnlyOnlineHome ? 'Ninguém online agora' : 'Nenhum outro membro'}</span>
+                              <span className="text-[11px] text-gray-500">{showOnlyOnlineHome ? 'Ninguém online agora' : 'Nenhum membro'}</span>
                             )
                           }
                           return members.map((m: any) => {
@@ -908,8 +907,8 @@ function ExpenseApp() {
                                     {initial}
                                   </div>
                                 )}
-                                {/* Badge de presença */}
-                                <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${online ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
+                                {/* Badge de presença (inline, à esquerda do nome) */}
+                                <span className={`inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white mr-2 self-center ${online ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden="true" />
                                 <span className="text-[11px] text-gray-700 dark:text-gray-300 whitespace-nowrap">{name}</span>
                               </div>
                             )
@@ -1561,7 +1560,7 @@ function ExpenseApp() {
                                           {initial}
                                         </div>
                                       )}
-                                      <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${online ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
+                                      <span className={`absolute z-10 left-0 top-0 -translate-x-1/3 -translate-y-1/3 h-2.5 w-2.5 rounded-full ring-2 ring-white ${online ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden="true"></span>
                                     </div>
                                   )
                                 })}
