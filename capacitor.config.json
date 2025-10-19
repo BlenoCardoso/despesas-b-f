@@ -1,0 +1,16 @@
+{
+  "appId": "com.bleno.despesas",
+  "appName": "despesas-app",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "958999401996-e6erq73qrbdqkf41hh5paes022jcbd7r.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false,
+      "androidClientId": "958999401996-4on39pe19b7q368takvbmu5i2csuq8e3.apps.googleusercontent.com"
+    }
+  }
+}

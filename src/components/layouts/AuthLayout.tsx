@@ -25,7 +25,7 @@ export default function AuthLayout() {
   }, [navigate, location.pathname])
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pt-[env(safe-area-inset-top)]">
       <Outlet />
     </div>
   )

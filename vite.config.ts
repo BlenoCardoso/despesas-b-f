@@ -24,6 +24,9 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // Ensure Capacitor picks up the latest web assets by building into 'www'
+    // Capacitor sync is currently copying from 'www' -> android assets
+    outDir: 'www',
   },
   define: {
     global: 'globalThis',

@@ -54,6 +54,14 @@
     box-sizing: border-box;
   }
   
+  /* Prevenir overflow horizontal */
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    position: relative;
+  }
+  
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
@@ -63,6 +71,13 @@
   /* Safe area support for mobile devices */
   html {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  
+  /* Garantir que todos os containers respeitem a largura da tela */
+  #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   
   /* Custom scrollbar for webkit browsers */
