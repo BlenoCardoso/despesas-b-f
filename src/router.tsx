@@ -1,5 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
-import { Link } from 'react-router-dom'
+import { createBrowserRouter, Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useState, useEffect, useRef } from 'react'
 import { ConnectionStatus } from './components/ConnectionStatus'
@@ -49,6 +48,7 @@ const formatDate = (date: Date): string => {
 
 // Componente principal de despesas
 function ExpenseApp() {
+  const navigate = useNavigate()
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
   const [showActionMenu, setShowActionMenu] = useState<number | null>(null)
@@ -797,7 +797,7 @@ function ExpenseApp() {
               <LogIn className="h-5 w-5" />
             </button>
             {/* Gerar convite (somente owner) */}
-              {isOwner && (
+            {isOwner && (
               <button
                 onClick={generateInviteCode}
                 disabled={!currentHousehold || inviteGenerating}
@@ -808,9 +808,9 @@ function ExpenseApp() {
                 <UserPlus className="h-5 w-5" />
               </button>
             )}
-            {/* Relatórios (placeholder) */}
+            {/* Relatórios -> navegar para página de relatório */}
             <button
-              onClick={() => toast('📊 Relatórios em breve!')}
+              onClick={() => navigate('/report')}
               className="button-icon-touch text-gray-700 hover:text-blue-600"
               title="Relatórios"
               aria-label="Relatórios"
@@ -2281,6 +2281,7 @@ function JoinHouseholdModal({
 }
 import LoginPage from '@/features/auth/pages/LoginPage'
 import InvitePage from '@/pages/InvitePage'
+import ReportPage from '@/pages/Report'
 import HomePage from '@/pages/HomePage'
 import { MobileExpensesPage } from '@/pages/UltraSimplePage'
 import { NewSettingsPage } from '@/pages/NewSettingsPage'
@@ -2338,5 +2339,10 @@ export const router = createBrowserRouter([
         element: <NewSettingsPage />
       }
     ]
+  }
+  ,
+  {
+    path: '/report',
+    element: <ReportPage />
   }
 ])
