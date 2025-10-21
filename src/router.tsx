@@ -1520,7 +1520,7 @@ function ExpenseApp() {
                     <div key={hh.id} className={`p-3 border rounded-lg flex items-center justify-between ${currentHousehold?.id === hh.id ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 truncate">{hh.name || 'Casa'}</p>
-                        <p className="text-[12px] text-gray-500 mt-0.5">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o owner' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
+                        <p className="text-[12px] text-gray-500 mt-0.5">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o proprietário' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
                         {/* small helper to make purpose of the household clearer */}
                         <p className="text-[11px] text-gray-400 truncate">{hh.name && hh.name.length > 30 ? hh.name : ''}</p>
                         <div className="mt-1 flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -2273,7 +2273,7 @@ function JoinHouseholdModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
         <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">🔗 Ingressar na Household</h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">🔗 Entrar na casa</h3>
           <p className="text-gray-600 text-sm mb-4">
             Digite o código de 6 dígitos que você recebeu:
           </p>
