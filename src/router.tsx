@@ -69,6 +69,8 @@ function ExpenseApp() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
+  const [showCreateInviteModal, setShowCreateInviteModal] = useState(false)
+  const [inviteSharedName, setInviteSharedName] = useState('')
   const [showLeaveModal, setShowLeaveModal] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [showSwitcher, setShowSwitcher] = useState(false)
@@ -593,48 +595,30 @@ function ExpenseApp() {
 
   // Gerar código de convite
   const generateInviteCode = async () => {
+    // Em vez de gerar imediatamente, abrimos um modal que permite ao owner
+    // escolher um nome amigável para a despesa compartilhada. Isso melhora
+    // a clareza e registra o nome antes de criar o convite.
     if (!currentHousehold) {
       console.warn('⚠️ Nenhuma household atual para gerar convite')
-  toast.info('Ainda carregando a casa. Tente de novo em alguns segundos.')
+      toast.info('Ainda carregando a casa. Tente de novo em alguns segundos.')
       return
     }
     if (!currentUser) {
-  toast.info('Usuário não autenticado ainda. Aguarde...')
+      toast.info('Usuário não autenticado ainda. Aguarde...')
       return
     }
     if (!navigator.onLine) {
-  toast.error('Você está offline. Conecte-se à internet para gerar convite.')
+      toast.error('Você está offline. Conecte-se à internet para gerar convite.')
       return
     }
     if (currentHousehold.ownerId !== currentUser.uid) {
-  toast.error('Apenas o proprietário (ou admin) pode gerar convites.')
+      toast.error('Apenas o proprietário (ou admin) pode gerar convites.')
       return
     }
-    console.log('🧪 Clique em Convidar. Household:', currentHousehold.id, 'User:', currentUser.uid)
-    setShowInviteModal(true)
-    setInviteCode('••••••')
-    setInviteGenerating(true)
-    try {
-      // Usar apenas householdService que funciona 100%
-      console.log('🎟️ Gerando código via householdService...')
-      const code = await householdService.generateInviteCode(currentHousehold.id)
-      console.log('✅ Código gerado:', code)
-      setInviteCode(code)
-      
-      // Copiar para clipboard
-      try {
-        await navigator.clipboard.writeText(code)
-        console.log('✅ Código copiado para clipboard')
-      } catch (e) {
-        console.warn('Não foi possível copiar automaticamente')
-      }
-    } catch (error: any) {
-      console.error('❌ Erro ao gerar código:', error)
-      setInviteCode('ERRO')
-  toast.error(`Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
-    } finally {
-      setInviteGenerating(false)
-    }
+
+    // Abrir modal de criação de convite com o nome atual já preenchido
+    setInviteSharedName(currentHousehold.name || '')
+    setShowCreateInviteModal(true)
   }
 
   // Ingressar via código - USANDO APENAS SISTEMA QUE FUNCIONA
@@ -1535,8 +1519,10 @@ function ExpenseApp() {
                     .map((hh) => (
                     <div key={hh.id} className={`p-3 border rounded-lg flex items-center justify-between ${currentHousehold?.id === hh.id ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate">{hh.name || 'Casa'}</p>
-                        <p className="text-xs text-gray-500">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o owner' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
+                        <p className="font-semibold text-gray-800 truncate">{hh.name || 'Casa'}</p>
+                        <p className="text-[12px] text-gray-500 mt-0.5">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o owner' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
+                        {/* small helper to make purpose of the household clearer */}
+                        <p className="text-[11px] text-gray-400 truncate">{hh.name && hh.name.length > 30 ? hh.name : ''}</p>
                         <div className="mt-1 flex items-center gap-2 overflow-x-auto no-scrollbar">
                           {(() => {
                             const members = (householdMembersMap[hh.id] || []).filter((m: any) => m.id !== currentUser?.uid)
@@ -1814,6 +1800,72 @@ function ExpenseApp() {
                   className="py-2 border border-gray-300 text-gray-700 rounded-lg font-medium text-sm"
                 >
                   Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Criar Convite (permite adicionar um nome amigável antes de gerar o código) */}
+        {showCreateInviteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">🎟️ Criar Convite</h3>
+                <p className="text-gray-600 text-sm mb-4">Escolha um nome para o grupo de despesas (apenas para exibição).</p>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nome exibido (opcional)</label>
+                <input
+                  value={inviteSharedName}
+                  onChange={(e) => setInviteSharedName(e.target.value)}
+                  placeholder="Ex: Despesas Casa B&F, Festa João"
+                  className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-2">Esse nome ficará visível ao aceitar o convite e no modal de trocar de casa.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowCreateInviteModal(false)}
+                  className="py-2 border border-gray-300 rounded-lg text-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    // Fecha o modal e gera o convite. Se o nome mudou, atualiza a household antes.
+                    setShowCreateInviteModal(false)
+                    setShowInviteModal(true)
+                    setInviteCode('••••••')
+                    setInviteGenerating(true)
+                    try {
+                      // Se o usuário editou o nome, atualiza a household (opcional)
+                      if (inviteSharedName && inviteSharedName.trim() && inviteSharedName !== (currentHousehold?.name || '')) {
+                        try {
+                          // Use the low-level firebaseHouseholdService update method available in the codebase
+                          await firebaseHouseholdService.updateHousehold(currentHousehold.id, { name: inviteSharedName })
+                        } catch (e) {
+                          // Fallback to other service method if present (not critical)
+                          try { await householdService.updateName(currentHousehold.id, inviteSharedName) } catch (e2) { console.warn('Falha ao atualizar nome da household (não crítico)', e2) }
+                        }
+                      }
+
+                      const code = await householdService.generateInviteCode(currentHousehold.id)
+                      setInviteCode(code)
+                      try { await navigator.clipboard.writeText(code) } catch {}
+                    } catch (error: any) {
+                      console.error('❌ Erro ao gerar código:', error)
+                      setInviteCode('ERRO')
+                      toast.error(`Erro ao gerar convite: ${error?.message || 'Erro desconhecido'}`)
+                    } finally {
+                      setInviteGenerating(false)
+                    }
+                  }}
+                  className="py-2 bg-blue-600 text-white rounded-lg"
+                >
+                  Gerar Convite
                 </button>
               </div>
             </div>
