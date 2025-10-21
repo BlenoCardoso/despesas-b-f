@@ -77,6 +77,8 @@ export interface Expense {
   // Para soft delete
   deletedAt?: Date
   deletedBy?: string
+  // Payment status for bills/cards
+  paymentStatus?: 'paid' | 'unpaid' | 'partial'
 }
 
 export interface Category {

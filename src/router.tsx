@@ -214,13 +214,16 @@ function ExpenseApp() {
         const prevMap = new Map(prev.map(p => [p.id, p]))
         const adaptedExpenses = expensesData.map(exp => {
           const prevItem = prevMap.get(exp.id)
+          // Derivar isPaid a partir do campo persistido paymentStatus no Firestore
+          const isPaidFromServer = (exp as any).paymentStatus === 'paid'
           return {
             ...exp,
             title: exp.description,
             date: formatDate(exp.createdAt),
             paidBy: exp.createdBy === userId ? 'Você' : 'Parceiro',
             splitType: prevItem?.splitType || 'equal',
-            isPaid: prevItem?.isPaid ?? false
+            // Preferir o valor do servidor; se ausente, manter estado local
+            isPaid: typeof (exp as any).paymentStatus !== 'undefined' ? isPaidFromServer : (prevItem?.isPaid ?? false)
           }
         })
         return adaptedExpenses
@@ -437,17 +440,18 @@ function ExpenseApp() {
     }
   ]
 
-  const total = expenses.reduce((sum, exp) => sum + exp.amount, 0)
-  const yourShare = expenses.reduce((sum, exp) => {
+  // Estatísticas: separar pendentes/pagas primeiro
+  const pendingExpenses = expenses.filter(exp => !exp.isPaid)
+  const paidExpenses = expenses.filter(exp => exp.isPaid)
+
+  // Totais (mostrar total de despesas pendentes — assim marcar como pago abate do resumo)
+  const total = pendingExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0)
+  const yourShare = pendingExpenses.reduce((sum, exp) => {
     if (exp.splitType === 'equal') return sum + (exp.amount / 2)
     if (exp.splitType === 'me' && exp.paidBy === 'Você') return sum + exp.amount
     return sum
   }, 0)
   const partnerShare = total - yourShare
-
-  // Estatísticas
-  const pendingExpenses = expenses.filter(exp => !exp.isPaid)
-  const paidExpenses = expenses.filter(exp => exp.isPaid)
   const categoriesStats = expenses.reduce((acc: any, exp) => {
     acc[exp.category] = (acc[exp.category] || 0) + exp.amount
     return acc
@@ -576,12 +580,22 @@ function ExpenseApp() {
     if (!expense) return
     
     try {
-      // Por enquanto, atualizar só localmente
-      setExpenses(expenses.map(exp => 
-        exp.id === id ? { ...exp, isPaid: !exp.isPaid } : exp
-      ))
+      // Atualização otimista: atualizar UI imediatamente
+      const newValue = !expense.isPaid
+      setExpenses(expenses.map(exp => exp.id === id ? { ...exp, isPaid: newValue } : exp))
       setShowActionMenu(null)
       try { await Haptics.impact({ style: ImpactStyle.Light }) } catch {}
+
+      // Persistir alteração no Firestore
+      try {
+        const paymentStatus = newValue ? 'paid' : 'unpaid'
+        await firebaseExpenseService.updateExpense(id, { paymentStatus })
+      } catch (err) {
+        // Reverter alteração local em caso de erro
+        console.error('Erro ao persistir paymentStatus:', err)
+        setExpenses(prev => prev.map(exp => exp.id === id ? { ...exp, isPaid: !newValue } : exp))
+        toast.error('Falha ao atualizar status no servidor')
+      }
     } catch (error) {
       console.error('❌ Erro ao atualizar status:', error)
     }
@@ -1111,16 +1125,19 @@ function ExpenseApp() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-semibold text-sm sm:text-base text-gray-800 dark:text-gray-100 truncate">{expense.title}</h3>
-                    {!expense.isPaid && (
-                      <span className="text-[10px] sm:text-xs bg-orange-100 text-orange-600 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full whitespace-nowrap">
-                        Pendente
-                      </span>
-                    )}
-                    {expense.isPaid && (
-                      <span className="text-[10px] sm:text-xs bg-green-100 text-green-600 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full whitespace-nowrap">
-                        ✓ Pago
-                      </span>
-                    )}
+                    {/* Indicador de status: quadrado clicável para marcar/desmarcar pagamento */}
+                    <button
+                      onClick={() => togglePaidStatus(expense.id)}
+                      title={expense.isPaid ? 'Despesa marcada como paga. Clique para desmarcar.' : 'Marcar despesa como paga'}
+                      aria-pressed={expense.isPaid}
+                      className={`w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-sm transition-all duration-150 ml-1 ${expense.isPaid ? 'bg-green-500' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    >
+                      {expense.isPaid ? (
+                        <CheckCircle2 className="h-3 w-3 text-white" />
+                      ) : (
+                        <span className="w-2 h-2 rounded-sm bg-white block" />
+                      )}
+                    </button>
                   </div>
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">{expense.date} • Pago por {expense.paidBy}</p>
                   <p className={`text-[10px] sm:text-xs ${
