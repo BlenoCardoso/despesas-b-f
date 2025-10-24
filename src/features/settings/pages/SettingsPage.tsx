@@ -18,6 +18,9 @@ import {
   HelpCircle,
   LogOut,
   ChevronRight
+  ,
+  Search,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportCSV, exportPDF, download as downloadBlob } from '@/services/exportService'
@@ -30,6 +33,8 @@ import { ProcessJoinRequestSystem } from '@/features/households/components/Proce
 import InvitesManager from '@/features/households/components/InvitesManager'
 import JoinWithCode from '@/features/households/components/JoinWithCode'
 import MembersManager from '@/features/households/components/MembersManager'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 function HouseholdSettingsCard() {
   const household = useCurrentHousehold()
@@ -39,6 +44,14 @@ function HouseholdSettingsCard() {
   const [value, setValue] = useState<string>(
     (household as any)?.settings?.canEditOthersExpenses ?? 'owner-admin'
   )
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm)
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   // Atualizar localmente quando household mudar
   useEffect(() => {
@@ -143,7 +156,29 @@ function HouseholdSettingsCard() {
         {canEdit && household?.id && (
           <>
             <InvitesManager householdId={household.id} />
-            <MembersManager householdId={household.id} />
+
+            <div className="mt-4">
+              <div className="mb-3">
+                <div className="flex gap-2 items-center">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Search className="h-4 w-4 text-gray-400" />
+                    <Input
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Procurar membro..."
+                      className="w-full"
+                    />
+                  </div>
+                  {searchTerm && (
+                    <Button size="sm" variant="outline" onClick={() => setSearchTerm('')}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <MembersManager householdId={household.id} searchTerm={debouncedSearchTerm} />
+            </div>
           </>
         )}
       </div>

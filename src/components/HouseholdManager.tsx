@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useFirebaseHousehold } from '../hooks/useFirebaseHousehold';
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Search, X } from 'lucide-react'
 
 interface HouseholdManagerProps {
   className?: string;
@@ -23,6 +26,23 @@ export default function HouseholdManager({ className = '' }: HouseholdManagerPro
   const [newHouseholdName, setNewHouseholdName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+
+  const displayHouseholds = useMemo(() => {
+    const term = debouncedSearchTerm.toLowerCase()
+    let filtered = term ? households.filter(h => (h.name || '').toLowerCase().includes(term)) : households.slice()
+    // Ensure currentHousehold remains visible in the list so the select value is valid
+    if (currentHousehold && !filtered.some(h => h.id === currentHousehold.id)) {
+      filtered = [currentHousehold, ...filtered]
+    }
+    return filtered
+  }, [households, debouncedSearchTerm, currentHousehold])
 
   const handleCreateHousehold = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +106,26 @@ export default function HouseholdManager({ className = '' }: HouseholdManagerPro
 
   return (
     <div className={`p-4 space-y-4 ${className}`}>
+      {/* Search / filter households */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Procurar Casas</label>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <Search className="h-4 w-4 text-gray-400" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Procurar por nome de casa..."
+              className="w-full"
+            />
+          </div>
+          {searchTerm && (
+            <Button size="sm" variant="outline" onClick={() => setSearchTerm('')}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
       {/* Seletor de Household Atual */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -96,7 +136,7 @@ export default function HouseholdManager({ className = '' }: HouseholdManagerPro
           onChange={(e) => switchHousehold(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {households.map((household) => (
+          {displayHouseholds.map((household) => (
             <option key={household.id} value={household.id}>
               {household.name}
             </option>

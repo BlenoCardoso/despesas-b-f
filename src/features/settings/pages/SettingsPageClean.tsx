@@ -9,9 +9,13 @@ import {
   Download,
   Users,
   Shield
+  ,
+  Search,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ImprovedInviteSystem } from '@/features/households/components/ImprovedInviteSystem'
 import { InviteSystemInfo } from '@/features/households/components/InviteSystemInfo'
@@ -24,6 +28,14 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
   const [canEditSetting, setCanEditSetting] = useState<string>('owner-admin')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm)
+
+  // Debounce search input to avoid rapid re-renders on large lists
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   // Carregar configurações
   useEffect(() => {
@@ -156,9 +168,30 @@ export function SettingsPage() {
             Gerencie os membros da sua casa
           </CardDescription>
         </CardHeader>
-        <CardContent>
+          <CardContent>
           {household && (
-            <MembersManager householdId={(household as any).id} />
+            <>
+              <div className="mb-3">
+                <div className="flex gap-2 items-center">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Search className="h-4 w-4 text-gray-400" />
+                    <Input
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Procurar membro..."
+                      className="w-full"
+                    />
+                  </div>
+                  {searchTerm && (
+                    <Button size="sm" variant="outline" onClick={() => setSearchTerm('')}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <MembersManager householdId={(household as any).id} searchTerm={debouncedSearchTerm} />
+            </>
           )}
         </CardContent>
       </Card>

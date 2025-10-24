@@ -18,7 +18,13 @@ import {
   Home,
   Crown,
   User
+  ,
+  Search,
+  X
+  ,
+  ArrowLeft
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   DropdownMenu,
@@ -45,6 +51,7 @@ export function NewSettingsPage() {
   const [showEditForm, setShowEditForm] = useState(false)
   const [newHouseholdName, setNewHouseholdName] = useState('')
   const [editHouseholdName, setEditHouseholdName] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
 
   const handleCreateHousehold = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -123,12 +130,17 @@ export function NewSettingsPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-6 space-y-6 px-4 sm:px-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Configurações</h1>
-          <p className="text-gray-600 mt-1">Gerencie suas households e configurações</p>
+        <div className="flex items-center gap-3">
+          <Link to="/" className="inline-flex items-center justify-center p-2 rounded-md hover:bg-gray-100">
+            <ArrowLeft className="h-5 w-5 text-gray-700" />
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Configurações</h1>
+            <p className="text-gray-600 mt-1">Gerencie suas casas e configurações</p>
+          </div>
         </div>
       </div>
 
@@ -171,7 +183,7 @@ export function NewSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Home className="h-5 w-5" />
-              Household Atual
+              Casa Atual
               {isOwner && (
                 <Badge variant="default" className="ml-2">
                   <Crown className="h-3 w-3 mr-1" />
@@ -180,7 +192,7 @@ export function NewSettingsPage() {
               )}
             </CardTitle>
             <CardDescription>
-              Gerencie a household atual
+              Gerencie a casa atual
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -218,7 +230,7 @@ export function NewSettingsPage() {
                         className="text-red-600"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Deletar household
+                        Deletar casa
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -238,75 +250,120 @@ export function NewSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Minhas Households
+              Minhas Casas
             </div>
             <Button onClick={() => setShowCreateForm(true)} size="sm">
               <Plus className="h-4 w-4 mr-2" />
-              Nova Household
+              Nova Casa
             </Button>
           </CardTitle>
           <CardDescription>
-            Troque entre suas households ou crie uma nova
+            Troque entre suas casas ou crie uma nova
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Search / filter */}
+          <div className="mb-3">
+            <div className="flex gap-2 items-center">
+              <div className="flex items-center gap-2 flex-1">
+                <Search className="h-4 w-4 text-gray-400" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Procurar casa por nome..."
+                  className="w-full"
+                />
+              </div>
+              {searchTerm && (
+                <Button size="sm" variant="outline" onClick={() => setSearchTerm('')}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
           {households.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-gray-500 mb-4">
-                Você não faz parte de nenhuma household
+                Você não faz parte de nenhuma casa
               </div>
               <Button onClick={() => setShowCreateForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Criar primeira household
+                Criar primeira casa
               </Button>
             </div>
           ) : (
-            <div className="space-y-3">
-              {households.map((household) => (
-                <div
-                  key={household.id}
-                  className={`p-3 rounded-lg border transition-colors ${
-                    household.id === currentHousehold?.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{household.name}</h3>
-                        {household.ownerId === user?.id && (
-                          <Badge variant="default" size="sm">
-                            <Crown className="h-3 w-3 mr-1" />
-                            Owner
-                          </Badge>
-                        )}
-                        {household.id === currentHousehold?.id && (
-                          <Badge variant="secondary" size="sm">
-                            Atual
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        {household.members.length} membro(s)
-                      </p>
-                    </div>
-                    
-                    {household.id !== currentHousehold?.id && (
-                      <Button
-                        onClick={() => switchHousehold(household.id)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Selecionar
-                      </Button>
-                    )}
+            (() => {
+              const filtered = households.filter((h) =>
+                h.name.toLowerCase().includes(searchTerm.trim().toLowerCase())
+              )
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-500">
+                    Nenhuma casa encontrada para "{searchTerm}"
                   </div>
+                )
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filtered.map((household) => (
+                    <div
+                      key={household.id}
+                      className={`p-3 rounded-lg border transition-colors ${
+                        household.id === currentHousehold?.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <div className="min-w-0">
+                              <h3 className="font-semibold truncate">{household.name}</h3>
+                              <p className="text-sm text-gray-600 truncate">
+                                {household.members.length} membro(s)
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {household.ownerId === user?.id && (
+                                <Badge variant="default" size="sm">
+                                  <Crown className="h-3 w-3 mr-1" />
+                                  Proprietário
+                                </Badge>
+                              )}
+                              {household.id === currentHousehold?.id && (
+                                <Badge variant="secondary" size="sm">
+                                  Atual
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex-shrink-0">
+                          {household.id !== currentHousehold?.id ? (
+                            <Button
+                              onClick={() => switchHousehold(household.id)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              Selecionar
+                            </Button>
+                          ) : (
+                            <div className="text-sm text-gray-500">&nbsp;</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })()
           )}
         </CardContent>
       </Card>
@@ -315,12 +372,12 @@ export function NewSettingsPage() {
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Criar Nova Household</DialogTitle>
+            <DialogTitle>Criar Nova Casa</DialogTitle>
           </DialogHeader>
           
           <form onSubmit={handleCreateHousehold} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nome da Household</label>
+              <label className="block text-sm font-medium mb-1">Nome da Casa</label>
               <Input
                 value={newHouseholdName}
                 onChange={(e) => setNewHouseholdName(e.target.value)}
@@ -339,7 +396,7 @@ export function NewSettingsPage() {
                 Cancelar
               </Button>
               <Button type="submit" className="flex-1">
-                Criar Household
+                Criar Casa
               </Button>
             </div>
           </form>
@@ -350,12 +407,12 @@ export function NewSettingsPage() {
       <Dialog open={showEditForm} onOpenChange={setShowEditForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar Nome da Household</DialogTitle>
+            <DialogTitle>Editar Nome da Casa</DialogTitle>
           </DialogHeader>
           
           <form onSubmit={handleUpdateName} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nome da Household</label>
+              <label className="block text-sm font-medium mb-1">Nome da Casa</label>
               <Input
                 value={editHouseholdName}
                 onChange={(e) => setEditHouseholdName(e.target.value)}

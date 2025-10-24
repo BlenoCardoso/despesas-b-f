@@ -87,9 +87,6 @@ function ExpenseApp() {
   const [householdMembers, setHouseholdMembers] = useState<any[]>([])
   const [onlineNow, setOnlineNow] = useState<any[]>([])
   const [showOnlyOnlineHome, setShowOnlyOnlineHome] = useState(false)
-  const [showOnlyOnlineExpenses, setShowOnlyOnlineExpenses] = useState(false)
-  // Desativar funcionalidade de transferir (solicitado pelo usuário)
-  const transferDisabled = true
   // Cache de membros por household (para o modal "Trocar de Casa")
   const [householdMembersMap, setHouseholdMembersMap] = useState<Record<string, any[]>>({})
   // Guardar unsubscribe do listener de despesas para podermos trocar de household
@@ -267,6 +264,37 @@ function ExpenseApp() {
       .filter(Boolean)
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ')
+  }
+
+  // Formata resumo da divisão para exibição na lista
+  const formatSplitSummary = (exp: any) => {
+    try {
+      if (!exp) return ''
+      if (exp.splitType === 'equal') return 'Compartilhado 50/50'
+      if (exp.splitType === 'me') return 'Só você'
+      if (exp.splitType === 'custom' && Array.isArray(exp.shares) && exp.shares.length > 0) {
+        // Mapear shares para strings: preferir userId -> householdMembers -> label
+        const parts = exp.shares.map((s: any) => {
+          let name = s.label || ''
+          if (s.userId) {
+            if (currentUser && s.userId === currentUser.uid) name = 'Você'
+            else {
+              const m = householdMembers.find((mm: any) => mm.id === s.userId)
+              name = m ? (m.name || m.email || String(m.id).slice(0,8)) : (s.label || String(s.userId).slice(0,6))
+            }
+          }
+          // Prefer mostrar percentuais; se percent não existir, mostrar valor
+          if (typeof s.percent === 'number') return `${name} ${s.percent}%`
+          if (typeof s.amount === 'number') return `${name} R$ ${s.amount.toFixed(2)}`
+          return name
+        })
+        // Mostrar até 2 partes e indicar resto como +N
+        if (parts.length <= 2) return parts.join(' • ')
+        const firstTwo = parts.slice(0,2).join(' • ')
+        return `${firstTwo} • +${parts.length - 2}`
+      }
+    } catch (e) { console.warn('formatSplitSummary error', e) }
+    return 'Divisão personalizada'
   }
 
   // Calcula quantos membros estão online por household (lastSeen < 2min), exceto você
@@ -452,6 +480,15 @@ function ExpenseApp() {
   const yourShare = pendingExpenses.reduce((sum, exp) => {
     if (exp.splitType === 'equal') return sum + (exp.amount / 2)
     if (exp.splitType === 'me' && exp.paidBy === 'Você') return sum + exp.amount
+    // Suporta divisão personalizada: usa a lista de shares se disponível
+    if (exp.splitType === 'custom' && Array.isArray((exp as any).shares)) {
+      try {
+        const shares = (exp as any).shares
+        // Prefer share by userId match
+        const your = shares.find((s: any) => s.userId && currentUser && s.userId === currentUser.uid) || shares.find((s: any) => s.label === 'Você')
+        return sum + (your?.amount ?? 0)
+      } catch { return sum }
+    }
     return sum
   }, 0)
   const partnerShare = total - yourShare
@@ -468,16 +505,6 @@ function ExpenseApp() {
       if (filter.startsWith('cat-')) return exp.category === filter.replace('cat-', '')
       return true
     })
-    .filter(exp => {
-      // Se o toggle 'mostrar apenas membros online' estiver ativo, filtra por createdBy
-      if (!showOnlyOnlineExpenses) return true
-      try {
-        const onlineIds = new Set(onlineNow.map((u: any) => u.id))
-        return onlineIds.has(exp.createdBy)
-      } catch {
-        return true
-      }
-    })
     .sort((a, b) => {
       if (sortBy === 'date') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       if (sortBy === 'amount') return b.amount - a.amount
@@ -489,14 +516,16 @@ function ExpenseApp() {
     if (!currentHousehold || !currentUser) return
     
     try {
-      const expenseData = {
+      const expenseData: any = {
         householdId: currentHousehold.id,
         description: newExpense.title,
         amount: newExpense.amount,
         category: newExpense.category.toLowerCase(),
         paymentMethod: 'card' as const,
-        createdBy: currentUser.uid
+        createdBy: currentUser.uid,
+        splitType: newExpense.splitType || 'equal'
       }
+      if (newExpense.shares) expenseData.shares = newExpense.shares
       
       console.log('💾 Criando nova despesa:', expenseData)
       const id = await firebaseExpenseService.createExpense(expenseData)
@@ -537,11 +566,13 @@ function ExpenseApp() {
     if (!currentHousehold) return
     
     try {
-      const updateData = {
+      const updateData: any = {
         description: updatedExpense.title,
         amount: updatedExpense.amount,
         category: updatedExpense.category.toLowerCase()
       }
+      if (typeof updatedExpense.splitType !== 'undefined') updateData.splitType = updatedExpense.splitType
+      if (updatedExpense.shares) updateData.shares = updatedExpense.shares
       
       await firebaseExpenseService.updateExpense(updatedExpense.id, updateData)
       // Atualização otimista mantendo demais campos locais
@@ -950,37 +981,7 @@ function ExpenseApp() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Ações principais movidas para o AppBar. Mantemos Transferir/Trocar/Sair aqui. */}
-                  {isOwner && !transferDisabled && (
-                    <button
-                      onClick={async () => {
-                        if (!currentUser || !currentHousehold) return
-                        try {
-                          const users = await firebaseUserService.getHouseholdMembers(currentHousehold.id)
-                          const candidates = users.filter(u => u.id !== currentUser.uid)
-                          setTransferCandidates(candidates)
-                          setTransferTo(candidates[0]?.id || '')
-                          setShowTransferModal({ open: true, household: currentHousehold })
-                        } catch (e) {
-                          console.error('Erro ao carregar membros', e)
-                          toast.error('Não foi possível carregar os membros para transferir')
-                        }
-                      }}
-                      className="text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-sm font-medium px-2 py-1 rounded"
-                      title="Transferir propriedade"
-                    >
-                      🔑 Transferir
-                    </button>
-                  )}
-                  {isOwner && transferDisabled && (
-                    <button
-                      onClick={() => toast('🔒 Transferir desativado no momento')}
-                      className="text-gray-500 bg-gray-50 border border-gray-200 text-sm font-medium px-2 py-1 rounded"
-                      title="Transferir propriedade desativado"
-                    >
-                      🔒 Transferir
-                    </button>
-                  )}
+                  {/* Ações principais movidas para o AppBar. Mantemos Trocar/Sair aqui. */}
                   <button
                     onClick={async () => {
                       if (!currentUser) return
@@ -1004,7 +1005,7 @@ function ExpenseApp() {
                   <button
                     onClick={() => setShowLeaveModal(true)}
                     className="text-red-600 text-sm font-medium hover:bg-red-50 px-2 py-1 rounded"
-                    title="Sair do compartilhamento desta household"
+                    title="Sair do compartilhamento desta casa"
                   >
                     🚪 Sair
                   </button>
@@ -1090,14 +1091,6 @@ function ExpenseApp() {
             >
               ✅ Pagas ({paidExpenses.length})
             </button>
-            {/* Toggle: mostrar apenas despesas de membros online */}
-            <button
-              onClick={() => setShowOnlyOnlineExpenses(p => !p)}
-              className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${showOnlyOnlineExpenses ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-              title="Mostrar apenas despesas criadas por membros que estão online agora"
-            >
-              🌐 Só membros online
-            </button>
           </div>
           
           <div className="flex gap-2">
@@ -1174,8 +1167,7 @@ function ExpenseApp() {
                     expense.splitType === 'equal' ? 'text-blue-600' : 
                     expense.splitType === 'me' ? 'text-red-600' : 'text-purple-600'
                   }`}>
-                    {expense.splitType === 'equal' ? 'Compartilhado 50/50' : 
-                     expense.splitType === 'me' ? 'Só você' : 'Divisão personalizada'}
+                    {formatSplitSummary(expense)}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -1185,8 +1177,17 @@ function ExpenseApp() {
                       (expense.paidBy === 'Você' ? 'text-green-600' : 'text-orange-600') :
                       expense.splitType === 'me' ? 'text-red-600' : 'text-purple-600'
                   }`}>
-                    Sua parte: R$ {expense.splitType === 'equal' ? (expense.amount / 2).toFixed(2) : 
-                                  expense.splitType === 'me' && expense.paidBy === 'Você' ? expense.amount.toFixed(2) : '0,00'}
+                    Sua parte: R$ {(() => {
+                      if (expense.splitType === 'equal') return (expense.amount / 2).toFixed(2)
+                      if (expense.splitType === 'me' && expense.paidBy === 'Você') return expense.amount.toFixed(2)
+                      if (expense.splitType === 'custom' && Array.isArray((expense as any).shares)) {
+                        const shares = (expense as any).shares
+                        const your = shares.find((s: any) => s.userId && currentUser && s.userId === currentUser.uid) || shares.find((s: any) => s.label === 'Você')
+                        if (your && typeof your.amount === 'number') return your.amount.toFixed(2)
+                        if (your && typeof your.percent === 'number') return (expense.amount * your.percent / 100).toFixed(2)
+                      }
+                      return '0,00'
+                    })()}
                   </p>
                 </div>
                 
@@ -1261,7 +1262,7 @@ function ExpenseApp() {
             >
               🗑️ Excluir todas as despesas
             </button>
-            <p className="text-[10px] sm:text-[11px] text-red-500 mt-1 text-center">Somente desta household • ação reversível (soft delete)</p>
+                        <p className="text-[10px] sm:text-[11px] text-red-500 mt-1 text-center">Somente desta casa • remoção temporária (recuperável)</p>
           </div>
           <div>
             <button
@@ -1279,7 +1280,7 @@ function ExpenseApp() {
             >
               ♻️ Restaurar todas
             </button>
-            <p className="text-[10px] sm:text-[11px] text-emerald-600 mt-1 text-center">Reverte o soft delete de todas as despesas</p>
+            <p className="text-[10px] sm:text-[11px] text-emerald-600 mt-1 text-center">Reverte a remoção temporária de todas as despesas</p>
           </div>
           <div className="md:col-span-2">
             <button
@@ -1315,7 +1316,9 @@ function ExpenseApp() {
             onClose={() => {
               setShowModal(false)
               setEditingExpense(null)
-            }} 
+            }}
+            householdMembers={householdMembers}
+            currentUser={currentUser}
           />
         )}
 
@@ -1325,7 +1328,7 @@ function ExpenseApp() {
             <div className="bg-white rounded-2xl w-full max-w-sm mx-auto p-4 sm:p-6 space-y-4">
               <div className="text-center">
                 <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">🗑️ Excluir todas as despesas?</h3>
-                <p className="text-gray-600 text-xs sm:text-sm">Isso vai mover todas as despesas desta household para a lixeira (soft delete). Você pode restaurar depois se necessário.</p>
+                <p className="text-gray-600 text-xs sm:text-sm">Isso vai mover todas as despesas desta casa para a lixeira (remoção temporária). Você pode restaurar depois se necessário.</p>
               </div>
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs sm:text-sm text-red-700">
                 Esta ação não afeta outras households e pode levar alguns segundos se houver muitas despesas.
@@ -1530,23 +1533,269 @@ function ExpenseApp() {
           </div>
         )}
 
-        {/* Modal de Trocar de Casa (simplificado temporariamente) */}
+        {/* Modal de Trocar de Casa */}
         {showSwitcher && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold">⇄ Trocar de Casa</h3>
+                <h3 className="text-xl font-bold text-gray-800">⇄ Trocar de Casa</h3>
                 <button onClick={() => setShowSwitcher(false)} className="text-gray-500 text-2xl">×</button>
               </div>
-              <p className="mt-4 text-gray-600">Opções de troca de casa foram simplificadas temporariamente para evitar erros de sintaxe durante desenvolvimento.</p>
-              <div className="mt-4 text-right">
-                <button onClick={() => setShowSwitcher(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Fechar</button>
+              {(!myHouseholds || myHouseholds.length === 0) ? (
+                <div className="text-center text-gray-600">
+                  <p>Você ainda não tem outras casas.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-auto">
+                  {/* Filtro: Toggle visual (Todos / Somente online) */}
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-600">Filtrar:</span>
+                      <div className="inline-flex rounded-lg overflow-hidden border border-gray-200 bg-white">
+                        <button
+                          onClick={() => setShowOnlyOnline(false)}
+                          className={`px-3 py-1 text-sm ${!showOnlyOnline ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          onClick={() => setShowOnlyOnline(true)}
+                          className={`px-3 py-1 text-sm ${showOnlyOnline ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Somente online
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!currentUser) return
+                        try { await computeOnlineCounts(myHouseholds, currentUser.uid) } catch {}
+                        try { await loadMembersForHouseholds(myHouseholds) } catch {}
+                      }}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Atualizar
+                    </button>
+                  </div>
+                  {myHouseholds
+                    .filter(hh => !showOnlyOnline || (onlineCounts[hh.id] || 0) > 0)
+                    .map((hh) => (
+                    <div key={hh.id} className={`p-3 border rounded-lg flex items-center justify-between ${currentHousehold?.id === hh.id ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 truncate">{hh.name || 'Casa'}</p>
+                        <p className="text-[12px] text-gray-500 mt-0.5">membros: {hh.members?.length || 1} {hh.ownerId === currentUser?.uid ? '• você é o proprietário' : ''} {typeof onlineCounts[hh.id] !== 'undefined' && (<span className="ml-1 text-emerald-600">• online: {onlineCounts[hh.id]}</span>)}</p>
+                        {/* small helper to make purpose of the household clearer */}
+                        <p className="text-[11px] text-gray-400 truncate">{hh.name && hh.name.length > 30 ? hh.name : ''}</p>
+                        <div className="mt-1 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                          {(() => {
+                            const members = (householdMembersMap[hh.id] || []).filter((m: any) => m.id !== currentUser?.uid)
+                            if (!members.length) return <span className="text-[11px] text-gray-400">sem membros</span>
+                            const max = 6
+                            const display = members.slice(0, max)
+                            const rest = members.length - display.length
+                            return (
+                              <>
+                                {display.map((m: any) => {
+                                  const name = m.name || m.email || (m.id ? String(m.id).slice(0, 8) : 'Membro')
+                                  const initial = (name?.trim?.()?.[0] || 'M').toUpperCase()
+                                  const online = isUserOnline(m)
+                                  const title = `${name} • ${formatLastSeenPt(m)}`
+                                  return (
+                                    <div key={m.id} className="relative" title={title}>
+                                      {m.avatarUrl ? (
+                                        <img src={m.avatarUrl} alt={name} className="h-7 w-7 rounded-full object-cover border border-gray-200" />
+                                      ) : (
+                                        <div className="h-7 w-7 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[11px] font-semibold border border-gray-200">
+                                          {initial}
+                                        </div>
+                                      )}
+                                      <span className={`absolute z-10 left-0 top-0 -translate-x-1/3 -translate-y-1/3 h-2.5 w-2.5 rounded-full ring-2 ring-white ${online ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden="true"></span>
+                                    </div>
+                                  )
+                                })}
+                                {rest > 0 && (
+                                  <div className="h-7 w-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[11px] border border-gray-200" title={`+${rest} mais`}>
+                                    +{rest}
+                                  </div>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            if (!currentUser) return
+                            setSwitching(true)
+                            try {
+                              await setActiveHousehold(hh.id, currentUser.uid)
+                              setShowSwitcher(false)
+                            } finally { setSwitching(false) }
+                          }}
+                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          disabled={switching || currentHousehold?.id === hh.id}
+                        >
+                          {currentHousehold?.id === hh.id ? 'Atual' : 'Usar'}
+                        </button>
+                        {/* Transferir removido: funcionalidade desativada por enquanto */}
+                        <button
+                          onClick={async () => {
+                            if (!currentUser) return
+                            if (hh.ownerId === currentUser.uid) {
+                              // Transferência temporariamente desativada — informar o usuário
+                              try { toast.info('Transferir propriedade foi desativado temporariamente. Para sair, crie uma nova casa ou peça para outro membro aceitar o convite.') } catch {}
+                              return
+                            }
+                            if (!confirm(`Sair de "${hh.name || 'Casa'}"?`)) return
+                            setSwitching(true)
+                            try {
+                              // Se for a casa atual, reaproveitar o fluxo de sair do compartilhamento
+                              if (currentHousehold?.id === hh.id) {
+                                await householdService.leaveHousehold(hh.id)
+                                const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                                let nextId: string
+                                if (list.length > 0) nextId = list[0].id
+                                else nextId = await firebaseHouseholdService.createHousehold('Minha Casa', currentUser.uid)
+                                await setActiveHousehold(nextId, currentUser.uid)
+                              } else {
+                                // Sair de uma casa que não é a atual
+                                await firebaseHouseholdService.removeMemberFromHousehold(hh.id, currentUser.uid)
+                                const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                                setMyHouseholds(list)
+                              }
+                              toast.success('🚪 Você saiu da casa selecionada.')
+                            } catch (e) {
+                              console.error('Erro ao sair da casa', e)
+                              toast.error('Falha ao sair da casa')
+                            } finally {
+                              setSwitching(false)
+                            }
+                          }}
+                          className="px-3 py-1 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100"
+                        >
+                          Sair
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  onClick={async () => {
+                    if (!currentUser) return
+                    setSwitching(true)
+                    try {
+                      const newId = await firebaseHouseholdService.createHousehold('Nova Casa', currentUser.uid)
+                      await setActiveHousehold(newId, currentUser.uid)
+                      setShowSwitcher(false)
+                    } catch (e) { console.error('Erro ao criar nova casa', e) }
+                    finally { setSwitching(false) }
+                  }}
+                  className="w-full py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50"
+                  disabled={switching}
+                >
+                  ➕ Criar nova casa
+                </button>
               </div>
             </div>
           </div>
         )}
 
-  {/* Modal Transferir Propriedade removido (transferência desativada) */}
+        {/* Modal Transferir Propriedade */}
+        {showTransferModal.open && showTransferModal.household && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-800">🔑 Transferir propriedade</h3>
+                <button onClick={() => setShowTransferModal({ open: false })} className="text-gray-500 text-2xl">×</button>
+              </div>
+              <p className="text-sm text-gray-600">Selecione um membro para se tornar o novo proprietário da casa “{showTransferModal.household.name || 'Casa'}”.</p>
+              {showTransferModal.note && (
+                <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">{showTransferModal.note}</div>
+              )}
+              {transferCandidates.length === 0 ? (
+                <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 text-sm">
+                  É necessário ao menos um outro membro para transferir a propriedade.
+                </div>
+              ) : (
+                <select
+                  value={transferTo}
+                  onChange={(e) => setTransferTo(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {transferCandidates.map(u => (
+                    <option key={u.id} value={u.id}>{u.name || u.email || u.id}</option>
+                  ))}
+                </select>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowTransferModal({ open: false })}
+                  className="py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium"
+                  disabled={transferring}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!currentUser || !showTransferModal.household) return
+                    if (!transferTo) { toast('Escolha um membro'); return }
+                    setTransferring(true)
+                    try {
+                      await firebaseHouseholdServiceComplete.transferOwnership(showTransferModal.household.id, currentUser.uid, transferTo)
+                      // Atualizar lista e household atual, se pertinente
+                      const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                      setMyHouseholds(list)
+                      if (currentHousehold?.id === showTransferModal.household.id) {
+                        const hh = await firebaseHouseholdService.getHouseholdById(showTransferModal.household.id)
+                        setCurrentHousehold(hh)
+                      }
+                      // Se estava marcado para sair após transferir, executa a saída agora
+                      const shouldLeave = pendingLeaveAfterTransferHouseholdId === showTransferModal.household.id
+                      setShowTransferModal({ open: false })
+                      if (shouldLeave) {
+                        try {
+                          // Se é a casa atual, usar fluxo de saída com mudança para outra casa
+                          if (currentHousehold?.id === showTransferModal.household.id) {
+                            await householdService.leaveHousehold(showTransferModal.household.id)
+                            const list2 = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                            let nextId: string
+                            if (list2.length > 0) nextId = list2[0].id
+                            else nextId = await firebaseHouseholdService.createHousehold('Minha Casa', currentUser.uid)
+                            await setActiveHousehold(nextId, currentUser.uid)
+                          } else {
+                            await firebaseHouseholdService.removeMemberFromHousehold(showTransferModal.household.id, currentUser.uid)
+                            const list2 = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                            setMyHouseholds(list2)
+                          }
+                          toast.success('🚪 Você saiu da casa após transferir a propriedade.')
+                        } catch (e) {
+                          console.error('Erro ao sair após transferir', e)
+                          toast.error('Propriedade transferida, mas houve falha ao sair. Tente sair novamente.')
+                        } finally {
+                          setPendingLeaveAfterTransferHouseholdId(null)
+                        }
+                      } else {
+                        toast.success('✅ Propriedade transferida! Agora você pode sair, se quiser.')
+                      }
+                    } catch (e: any) {
+                      console.error('Erro ao transferir propriedade', e)
+                      toast.error(`Falha ao transferir: ${e?.message || 'erro'}`)
+                    } finally {
+                      setTransferring(false)
+                    }
+                  }}
+                  className="py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg font-semibold hover:from-amber-500 hover:to-orange-700 disabled:opacity-50 shadow"
+                  disabled={transferring || transferCandidates.length === 0}
+                >
+                  {transferring ? '⏳ Transferindo...' : 'Transferir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal de Convite Gerado */}
         {showInviteModal && (
@@ -1775,12 +2024,16 @@ function AddExpenseModal({
   expense, 
   onAdd, 
   onEdit, 
-  onClose 
+  onClose,
+  householdMembers = [],
+  currentUser = null
 }: { 
   expense?: any
   onAdd: (expense: any) => void
   onEdit: (expense: any) => void
-  onClose: () => void 
+  onClose: () => void
+  householdMembers?: any[]
+  currentUser?: any
 }) {
   const formatBRL = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n)
   const parseBRL = (s: string) => {
@@ -1795,6 +2048,22 @@ function AddExpenseModal({
     category: expense?.category || '🍽️ Alimentação',
     splitType: expense?.splitType || 'equal'
   })
+  const [customShares, setCustomShares] = useState<{ userId?: string; label: string; percent: number; amount?: number }[]>(() => {
+    // If expense already has shares, map them (prefer userId if present)
+    if (expense?.shares) {
+      return expense.shares.map((s: any) => ({ userId: s.userId, label: s.label || s.name || (s.userId || 'Membro'), percent: Math.round(((s.amount || 0) / (expense.amount || 1)) * 100), amount: s.amount }))
+    }
+    // If householdMembers provided, default to splitting among all members equally
+    if (householdMembers && householdMembers.length > 0) {
+      const n = householdMembers.length
+      const base = Math.floor(100 / n)
+      const arr = householdMembers.map((m: any, i: number) => ({ userId: m.id, label: m.name || m.email || String(m.id).slice(0,8), percent: i === n-1 ? 100 - base*(n-1) : base }))
+      return arr
+    }
+    // Fallback to two-member split
+    return [{ label: 'Você', percent: 50 }, { label: 'Parceiro', percent: 50 }]
+  })
+  const [customError, setCustomError] = useState('')
   const [submitAttempted, setSubmitAttempted] = useState(false)
 
   const isEditing = !!expense
@@ -1808,13 +2077,26 @@ function AddExpenseModal({
         try { await Haptics.notification({ type: 'ERROR' as any }) } catch {}
         return
       }
+      // If custom split, validate percents sum to 100 and compute amounts
+      let shares: any[] | undefined = undefined
+      if (formData.splitType === 'custom') {
+        const sum = customShares.reduce((s, x) => s + (Number(x.percent) || 0), 0)
+        if (sum !== 100) {
+          setCustomError('A soma das porcentagens deve ser 100%')
+          try { await Haptics.notification({ type: 'ERROR' as any }) } catch {}
+          return
+        }
+        shares = customShares.map(s => ({ userId: s.userId, label: s.label, percent: s.percent, amount: Math.round((s.percent/100) * amountNumber * 100)/100 }))
+      }
+
       const expenseData = {
         title: formData.title,
         amount: amountNumber,
         date: 'Hoje',
         paidBy: 'Você',
         splitType: formData.splitType,
-        category: formData.category
+        category: formData.category,
+        ...(shares ? { shares } : {})
       }
 
       if (isEditing) {
@@ -1998,6 +2280,72 @@ function AddExpenseModal({
               ))}
             </div>
           </div>
+          {formData.splitType === 'custom' && (
+            <div className="mt-2 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+              <p className="text-sm font-medium text-gray-700 mb-2">Defina a divisão personalizada</p>
+              <p className="text-xs text-gray-500 mb-2">Edite porcentagens para cada participante. A soma deve ser 100%.</p>
+              <div className="space-y-2">
+                {customShares.map((s, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <select
+                      value={s.userId || s.label}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        // find member by id
+                        const member = householdMembers.find((m: any) => String(m.id) === String(val))
+                        if (member) {
+                          setCustomShares(prev => prev.map((p, i) => i === idx ? { ...p, userId: member.id, label: member.name || member.email || member.id } : p))
+                        } else {
+                          // value is a free label
+                          setCustomShares(prev => prev.map((p, i) => i === idx ? { ...p, userId: undefined, label: val } : p))
+                        }
+                        setCustomError('')
+                      }}
+                      className="flex-1 p-2 border rounded text-sm bg-white"
+                    >
+                      {householdMembers && householdMembers.length > 0 ? (
+                        <>
+                          {householdMembers.map((m: any) => (
+                            <option key={m.id} value={m.id}>{m.name || m.email || String(m.id).slice(0,8)}</option>
+                          ))}
+                          <option value={s.label}>Outro: {s.label}</option>
+                        </>
+                      ) : (
+                        <option value={s.label}>{s.label}</option>
+                      )}
+                    </select>
+                    <input
+                      type="number"
+                      value={s.percent}
+                      onChange={(e) => {
+                        const val = Number(e.target.value)
+                        setCustomShares(prev => prev.map((p, i) => i === idx ? { ...p, percent: isNaN(val) ? 0 : Math.max(0, Math.min(100, val)) } : p))
+                        setCustomError('')
+                      }}
+                      className="w-20 p-2 border rounded text-sm"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                    <button type="button" onClick={() => setCustomShares(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 px-2">Remover</button>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 mt-2">
+                  <button type="button" onClick={() => {
+                    // Add a new empty slot (selectable)
+                    setCustomShares(prev => [...prev, { label: `Membro ${prev.length+1}`, percent: 0 }])
+                  }} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-sm">+ Adicionar pessoa</button>
+                  <button type="button" onClick={() => {
+                    // quick-fill equal
+                    if (customShares.length === 0) return
+                    const equal = Math.floor(100 / customShares.length)
+                    const arr = customShares.map((p, i) => ({ ...p, percent: i === customShares.length-1 ? 100 - equal*(customShares.length-1) : equal }))
+                    setCustomShares(arr)
+                  }} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">Preencher igualmente</button>
+                  <div className="ml-auto text-xs text-gray-600">Soma: {customShares.reduce((s, x) => s + (Number(x.percent)||0), 0)}%</div>
+                </div>
+                {customError && <p className="text-xs text-red-600">{customError}</p>}
+              </div>
+            </div>
+          )}
           {/* Barra fixa de ações no rodapé do modal */}
           <div className="sticky bottom-0 left-0 right-0 -mx-5 sm:-mx-6 px-5 sm:px-6 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 safe-bottom">
             <div className="grid grid-cols-2 gap-3">
