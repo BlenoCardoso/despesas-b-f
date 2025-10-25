@@ -26,7 +26,19 @@ import {
   BarChart3,
   UserPlus,
   LogIn,
-  Calendar
+  Calendar,
+  Menu,
+  Users,
+  Share2,
+  RefreshCw,
+  Download,
+  FileText,
+  Moon,
+  Sun,
+  Lock,
+  LogOut,
+  ChevronRight,
+  Copy
 } from 'lucide-react'
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 
@@ -75,6 +87,7 @@ function ExpenseApp() {
   const [leaving, setLeaving] = useState(false)
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [switching, setSwitching] = useState(false)
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false)
   const [myHouseholds, setMyHouseholds] = useState<any[]>([])
   const [showOnlyOnline, setShowOnlyOnline] = useState(false)
   const [onlineCounts, setOnlineCounts] = useState<Record<string, number>>({})
@@ -795,71 +808,40 @@ function ExpenseApp() {
 
   return (
   <div className="w-full max-w-full overflow-x-hidden bg-blue-50 dark:bg-gray-900 min-h-screen">
-      {/* AppBar / Cabeçalho */}
-      <header className="appbar sticky top-0 z-30 border-b border-gray-200 supports-[backdrop-filter]:backdrop-blur bg-gradient-to-r from-white/90 via-blue-50/70 to-indigo-50/60 dark:from-gray-900/90 dark:via-gray-900/80 dark:to-gray-900/70">
-        <div className="appbar-inner px-3 sm:px-4 py-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Link to="/" aria-label="Início" className="button-icon-touch text-gray-700 hover:text-blue-600">
-              <HomeIcon className="h-5 w-5" />
-            </Link>
-            <div className="min-w-0">
-              <h1 className="appbar-title text-lg font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent dark:from-blue-300 dark:to-indigo-300">Despesas</h1>
-              {currentHousehold && (
-                <p className="text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-200 dark:border-blue-800 truncate">{
-                  (() => {
-                    const raw = currentHousehold?.name || 'Casa B&F'
-                    const lower = raw.toLowerCase()
-                    if (lower.startsWith('casa de ') && raw.includes('@')) {
-                      const owner = householdMembers.find((m: any) => m.id === currentHousehold?.ownerId)
-                      const isYou = currentHousehold?.ownerId === currentUser?.uid
-                      const ownerDisplay = isYou
-                        ? (currentUser?.displayName || owner?.name || owner?.email)
-                        : (owner?.name || owner?.email)
-                      let clean = ownerDisplay || raw.substring('Casa de '.length)
-                      if (clean?.includes?.('@')) {
-                        const local = clean.split('@')[0]
-                        clean = nameFromEmailLocalPart(local)
-                      }
-                      return `Casa de ${clean}`
-                    }
-                    return raw
-                  })()
-                }</p>
-              )}
+      {/* AppBar / Cabeçalho - Estilo EMAUDIO */}
+      <header className="appbar sticky top-0 z-30 border-b border-gray-200 supports-[backdrop-filter]:backdrop-blur bg-white/95 dark:bg-gray-900/95">
+        <div className="appbar-inner px-4 sm:px-6">
+          <div className="flex items-center justify-between w-full">
+            {/* Menu Hambúrguer - Esquerda */}
+            <button
+              onClick={() => setShowHamburgerMenu(true)}
+              className="button-icon-touch text-gray-700 hover:text-blue-600 dark:text-gray-300"
+              title="Menu"
+              aria-label="Abrir menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+
+            {/* Logo/Título - Centro */}
+            <div className="flex items-center justify-center min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <svg className="h-6 w-6 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                <h1 className="appbar-title text-lg font-bold text-gray-900 dark:text-white">Despesas</h1>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* Abrir modal de ingresso */}
+
+            {/* Ícone de Configurações - Direita */}
             <button
-              onClick={() => setShowJoinModal(true)}
-              className="button-icon-touch text-gray-700 hover:text-blue-600"
-              title="Ingressar em uma casa"
-              aria-label="Ingressar"
+              onClick={() => navigate('/settings')}
+              className="button-icon-touch text-gray-700 hover:text-blue-600 dark:text-gray-300"
+              title="Configurações"
+              aria-label="Configurações"
             >
-              <LogIn className="h-5 w-5" />
+              <SettingsIcon className="h-6 w-6" />
             </button>
-            {/* Gerar convite (somente owner) */}
-            {isOwner && (
-              <button
-                onClick={generateInviteCode}
-                disabled={!currentHousehold || inviteGenerating}
-                className="button-icon-touch text-gray-700 hover:text-blue-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-                title="Gerar convite"
-                aria-label="Gerar convite"
-              >
-                <UserPlus className="h-5 w-5" />
-              </button>
-            )}
-            {/* Relatórios -> navegar para página de relatório */}
-            <button
-              onClick={() => navigate('/report')}
-              className="button-icon-touch text-gray-700 hover:text-blue-600"
-              title="Relatórios"
-              aria-label="Relatórios"
-            >
-              <BarChart3 className="h-5 w-5" />
-            </button>
-            <ConnectionStatus connected={connected} />
           </div>
         </div>
       </header>
@@ -876,189 +858,75 @@ function ExpenseApp() {
         ) : (
           <>
             {/* Cabeçalho antigo substituído pelo AppBar acima */}
-            {/* Household Info */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 sm:p-4 mb-4 w-full border border-blue-100 dark:border-gray-700">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            {/* Household Info - Compacto */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 mb-4 w-full border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 border border-blue-200 dark:from-blue-900/20 dark:to-blue-800/10 dark:text-blue-200 dark:border-blue-900/40 flex-shrink-0">
+                  🏠
+                </span>
                 <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-gray-800 dark:text-gray-100 truncate">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-pink-100 to-pink-200 text-pink-700 border border-pink-200 dark:from-pink-900/20 dark:to-pink-800/10 dark:text-pink-200 dark:border-pink-900/40">🏠</span>
-                      <span>{(() => {
-                    const raw = currentHousehold?.name || 'Casa B&F'
-                    // Se o nome for do tipo "Casa de <email>", substitui o email por um nome amigável
-                    const lower = raw.toLowerCase()
-                    if (lower.startsWith('casa de ') && raw.includes('@')) {
-                      // Tenta usar o nome do proprietário
-                      const owner = householdMembers.find((m: any) => m.id === currentHousehold?.ownerId)
-                      const isYou = currentHousehold?.ownerId === currentUser?.uid
-                      const ownerDisplay = isYou
-                        ? (currentUser?.displayName || owner?.name || owner?.email)
-                        : (owner?.name || owner?.email)
-                      let clean = ownerDisplay || raw.substring('Casa de '.length)
-                      if (clean?.includes?.('@')) {
-                        const local = clean.split('@')[0]
-                        clean = nameFromEmailLocalPart(local)
+                  <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-100 truncate">
+                    {(() => {
+                      const raw = currentHousehold?.name || 'Casa B&F'
+                      const lower = raw.toLowerCase()
+                      if (lower.startsWith('casa de ') && raw.includes('@')) {
+                        const owner = householdMembers.find((m: any) => m.id === currentHousehold?.ownerId)
+                        const isYou = currentHousehold?.ownerId === currentUser?.uid
+                        const ownerDisplay = isYou
+                          ? (currentUser?.displayName || owner?.name || owner?.email)
+                          : (owner?.name || owner?.email)
+                        let clean = ownerDisplay || raw.substring('Casa de '.length)
+                        if (clean?.includes?.('@')) {
+                          const local = clean.split('@')[0]
+                          clean = nameFromEmailLocalPart(local)
+                        }
+                        return `Casa de ${clean}`
                       }
-                      return `Casa de ${clean}`
-                    }
-                    return raw
-                  })()}</span>
-                    </span>
+                      return raw
+                    })()}
                   </h2>
-                  <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">
+                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                     <span className="inline-flex items-center gap-1">
                       <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                      {currentHousehold?.members?.length || 2} pessoas compartilhando
+                      {onlineNow.length} online
                     </span>
-                  </p>
-                  {currentHousehold && (
-                    <div className="mt-2 space-y-1">
-                      {/* Toggle mostrar apenas online */}
-                      <label className="inline-flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400 select-none cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="accent-emerald-600"
-                          checked={showOnlyOnlineHome}
-                          onChange={(e) => setShowOnlyOnlineHome(e.target.checked)}
-                        />
-                        Mostrar apenas quem está online
-                      </label>
-
-                      {/* Lista de membros com avatar/inicial e badge de presença */}
-                      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                        {(() => {
-                          const onlineIds = new Set(onlineNow.map((u: any) => u.id))
-                          // Show all household members (including the current user) so everyone sees the same list
-                          const members = householdMembers.filter((m: any) => !showOnlyOnlineHome || onlineIds.has(m.id))
-                          if (members.length === 0) {
-                            return (
-                              <span className="text-[11px] text-gray-500">{showOnlyOnlineHome ? 'Ninguém online agora' : 'Nenhum membro'}</span>
-                            )
+                    <span>•</span>
+                    <span>{currentHousehold?.members?.length || 2} pessoas</span>
+                  </div>
+                  {currentHousehold?.ownerId && (
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                      Proprietário: {
+                        (() => {
+                          const owner = householdMembers.find((m: any) => m.id === currentHousehold.ownerId)
+                          const isYou = currentHousehold.ownerId === currentUser?.uid
+                          if (isYou) {
+                            return currentUser?.displayName || owner?.name || owner?.email || 'Você'
                           }
-                          return members.map((m: any) => {
-                            const name = m.name || m.email || (m.id ? String(m.id).slice(0, 8) : 'Membro')
-                            const initial = (name?.trim?.()?.[0] || 'M').toUpperCase()
-                            const online = onlineIds.has(m.id)
-                            const title = `${name} • ${formatLastSeenPt(m)}`
-                            return (
-                              <div key={m.id} className="relative flex items-center gap-2" title={title}>
-                                {m.avatarUrl ? (
-                                  <img src={m.avatarUrl} alt={name} className="h-7 w-7 rounded-full object-cover border border-gray-200" />
-                                ) : (
-                                  <div className="h-7 w-7 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-xs font-semibold border border-gray-200">
-                                    {initial}
-                                  </div>
-                                )}
-                                {/* Badge de presença (inline, à esquerda do nome) */}
-                                <span className={`inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white mr-2 self-center ${online ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden="true" />
-                                <span className="text-[11px] text-gray-700 dark:text-gray-300 whitespace-nowrap">{name}</span>
-                              </div>
-                            )
-                          })
-                        })()}
-                      </div>
-
-                      {/* Mostra proprietário de forma amigável */}
-                      {currentHousehold.ownerId && (
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                          Proprietário: {
-                            (() => {
-                              const owner = householdMembers.find((m: any) => m.id === currentHousehold.ownerId)
-                              const isYou = currentHousehold.ownerId === currentUser?.uid
-                              // Se for você, prioriza o displayName do usuário autenticado
-                              if (isYou) {
-                                return (
-                                  currentUser?.displayName || owner?.name || owner?.email || 'Você'
-                                )
-                              }
-                              // Caso contrário, usa nome/e-mail do owner; evita mostrar apenas o ID
-                              return owner?.name || owner?.email || String(currentHousehold.ownerId).slice(0,8)
-                            })()
-                          }{currentHousehold.ownerId === currentUser?.uid ? ' (você)' : ''}
-                        </p>
-                      )}
-                    </div>
+                          return owner?.name || owner?.email || String(currentHousehold.ownerId).slice(0,8)
+                        })()
+                      }{currentHousehold.ownerId === currentUser?.uid ? ' (você)' : ''}
+                    </p>
                   )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Ações principais movidas para o AppBar. Mantemos Trocar/Sair aqui. */}
-                  <button
-                    onClick={async () => {
-                      if (!currentUser) return
-                      setShowSwitcher(true)
-                      try {
-                        const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
-                        setMyHouseholds(list)
-                        // Recalcular presença online dos membros (sem contar você)
-                        try { await computeOnlineCounts(list, currentUser.uid) } catch {}
-                        // Carregar membros de cada household para exibir avatares
-                        try { await loadMembersForHouseholds(list) } catch {}
-                      } catch (e) {
-                        console.error('Erro ao carregar households do usuário', e)
-                      }
-                    }}
-                    className="text-gray-700 text-sm font-medium hover:bg-gray-100 px-2 py-1 rounded"
-                    title="Trocar de casa"
-                  >
-                    ⇄ Trocar
-                  </button>
-                  <button
-                    onClick={() => setShowLeaveModal(true)}
-                    className="text-red-600 text-sm font-medium hover:bg-red-50 px-2 py-1 rounded"
-                    title="Sair do compartilhamento desta casa"
-                  >
-                    🚪 Sair
-                  </button>
                 </div>
               </div>
             </div>
         
-  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6 w-full">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-100">📊 Resumo</h2>
-            <button 
-              onClick={() => setShowStats(!showStats)}
-              className="text-blue-600 text-xs sm:text-sm font-medium flex-shrink-0"
-            >
-              {showStats ? '📊 Ocultar' : '📈 Ver Mais'}
-            </button>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl sm:text-3xl font-bold text-blue-600 break-words">R$ {total.toFixed(2)}</p>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">Total das despesas</p>
-            <div className="mt-3 flex flex-col sm:flex-row justify-center gap-2 sm:gap-4 text-xs sm:text-sm">
-              <span className="text-green-600">• Você: R$ {yourShare.toFixed(2)}</span>
-              <span className="text-orange-600">• Parceiro: R$ {partnerShare.toFixed(2)}</span>
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 mb-4 w-full border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Total pendente</p>
+              <p className="text-xl font-bold text-blue-600 dark:text-blue-400">R$ {total.toFixed(2)}</p>
             </div>
-            
-            {showStats && (
-              <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="bg-green-50 p-3 rounded-lg">
-                    <p className="font-semibold text-green-700">{paidExpenses.length} Pagas</p>
-                    <p className="text-green-600">R$ {paidExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</p>
-                  </div>
-                  <div className="bg-orange-50 p-3 rounded-lg">
-                    <p className="font-semibold text-orange-700">{pendingExpenses.length} Pendentes</p>
-                    <p className="text-orange-600">R$ {pendingExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</p>
-                  </div>
-                </div>
-                
-                {/* Top categorias */}
-                <div className="text-left">
-                  <p className="font-medium text-gray-700 dark:text-gray-200 mb-2">🏆 Top Categorias:</p>
-                  {Object.entries(categoriesStats)
-                    .sort(([,a], [,b]) => (b as number) - (a as number))
-                    .slice(0, 3)
-                    .map(([cat, amount]) => (
-                    <div key={cat} className="flex justify-between text-sm py-1">
-                      <span className="capitalize text-gray-700 dark:text-gray-300">{cat.replace('alimentacao', '🍽️ Alimentação').replace('transporte', '🚗 Transporte').replace('casa', '🏠 Casa').replace('entretenimento', '🎬 Entretenimento')}</span>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">R$ {(amount as number).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
+            <div className="flex gap-3 text-xs">
+              <div className="text-right">
+                <p className="text-gray-500 dark:text-gray-400">Você</p>
+                <p className="font-semibold text-green-600">R$ {yourShare.toFixed(2)}</p>
               </div>
-            )}
+              <div className="text-right">
+                <p className="text-gray-500 dark:text-gray-400">Parceiro</p>
+                <p className="font-semibold text-orange-600">R$ {partnerShare.toFixed(2)}</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1237,75 +1105,6 @@ function ExpenseApp() {
           )}
         </div>
 
-        {/* Ações principais: manter no desktop, usar FAB no mobile */}
-        <div className="hidden sm:grid mt-4 sm:mt-6 grid-cols-2 gap-3 sm:gap-4 w-full">
-          <button 
-            className="bg-blue-600 text-white font-semibold py-2.5 sm:py-3 px-3 sm:px-4 rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base inline-flex items-center justify-center gap-2"
-            onClick={() => setShowModal(true)}
-          >
-            <Plus className="h-5 w-5" /> Adicionar Despesa
-          </button>
-          <button 
-            className="bg-gray-100 text-gray-700 font-semibold py-2.5 sm:py-3 px-3 sm:px-4 rounded-lg hover:bg-gray-200 transition-colors text-sm sm:text-base inline-flex items-center justify-center gap-2"
-            onClick={() => toast('📊 Relatórios em breve!')}
-          >
-            <BarChart3 className="h-5 w-5" /> Relatórios
-          </button>
-        </div>
-
-        {/* Ações em massa */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-          <div>
-            <button
-              onClick={() => setShowDeleteAllModal(true)}
-              className="w-full py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors text-xs sm:text-sm"
-            >
-              🗑️ Excluir todas as despesas
-            </button>
-                        <p className="text-[10px] sm:text-[11px] text-red-500 mt-1 text-center">Somente desta casa • remoção temporária (recuperável)</p>
-          </div>
-          <div>
-            <button
-              onClick={async () => {
-                if (!currentHousehold) return
-                try {
-                  const count = await firebaseExpenseService.restoreAllExpenses(currentHousehold.id)
-                  toast.success(`♻️ ${count} despesas restauradas`)
-                } catch (e) {
-                  console.error('Erro ao restaurar todas', e)
-                  toast.error('Erro ao restaurar despesas')
-                }
-              }}
-              className="w-full py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-medium hover:bg-emerald-100 transition-colors text-xs sm:text-sm"
-            >
-              ♻️ Restaurar todas
-            </button>
-            <p className="text-[10px] sm:text-[11px] text-emerald-600 mt-1 text-center">Reverte a remoção temporária de todas as despesas</p>
-          </div>
-          <div className="md:col-span-2">
-            <button
-              onClick={async () => {
-                if (!currentHousehold) return
-                setShowTrash(true)
-                setTrashLoading(true)
-                try {
-                  const items = await firebaseExpenseService.getDeletedExpenses(currentHousehold.id)
-                  setTrashItems(items)
-                  setSelectedTrashIds([])
-                } catch (e) {
-                  console.error('Erro ao abrir lixeira', e)
-                  toast.error('Erro ao carregar lixeira')
-                  setShowTrash(false)
-                } finally {
-                  setTrashLoading(false)
-                }
-              }}
-              className="w-full py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-            >
-              🧺 Abrir Lixeira
-            </button>
-          </div>
-        </div>
 
         {/* Modal de Adicionar/Editar Despesa */}
         {showModal && (
@@ -1530,6 +1329,263 @@ function ExpenseApp() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Menu Hambúrguer Completo */}
+        {showHamburgerMenu && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-start">
+            <div className="bg-white dark:bg-gray-800 h-full w-80 max-w-[85vw] shadow-2xl overflow-y-auto">
+              {/* Header do Menu */}
+              <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between z-10">
+                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Menu</h3>
+                <button 
+                  onClick={() => setShowHamburgerMenu(false)} 
+                  className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-2xl"
+                  aria-label="Fechar menu"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Info da Casa Atual */}
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 border border-blue-200 dark:from-blue-900/20 dark:to-blue-800/10 dark:text-blue-200 dark:border-blue-900/40 flex-shrink-0">
+                    🏠
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-sm text-gray-800 dark:text-gray-100 truncate">
+                      {(() => {
+                        const raw = currentHousehold?.name || 'Casa B&F'
+                        const lower = raw.toLowerCase()
+                        if (lower.startsWith('casa de ') && raw.includes('@')) {
+                          const owner = householdMembers.find((m: any) => m.id === currentHousehold?.ownerId)
+                          const isYou = currentHousehold?.ownerId === currentUser?.uid
+                          const ownerDisplay = isYou
+                            ? (currentUser?.displayName || owner?.name || owner?.email)
+                            : (owner?.name || owner?.email)
+                          let clean = ownerDisplay || raw.substring('Casa de '.length)
+                          if (clean?.includes?.('@')) {
+                            const local = clean.split('@')[0]
+                            clean = nameFromEmailLocalPart(local)
+                          }
+                          return `Casa de ${clean}`
+                        }
+                        return raw
+                      })()}
+                    </h4>
+                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                        {onlineNow.length} online
+                      </span>
+                      <span>•</span>
+                      <span>{currentHousehold?.members?.length || 2} pessoas</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de membros */}
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {householdMembers.slice(0, 6).map((m: any) => {
+                    const name = m.name || m.email || (m.id ? String(m.id).slice(0, 8) : 'Membro')
+                    const initial = (name?.trim?.()?.[0] || 'M').toUpperCase()
+                    const online = onlineNow.some((u: any) => u.id === m.id)
+                    return (
+                      <div key={m.id} className="relative" title={`${name} • ${formatLastSeenPt(m)}`}>
+                        {m.avatarUrl ? (
+                          <img src={m.avatarUrl} alt={name} className="h-8 w-8 rounded-full object-cover border border-gray-200" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-xs font-semibold border border-gray-200">
+                            {initial}
+                          </div>
+                        )}
+                        <span className={`absolute z-10 right-0 bottom-0 h-2.5 w-2.5 rounded-full ring-2 ring-white ${online ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden="true"></span>
+                      </div>
+                    )
+                  })}
+                  {householdMembers.length > 6 && (
+                    <div className="h-8 w-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs border border-gray-200">
+                      +{householdMembers.length - 6}
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                  Proprietário: {
+                    (() => {
+                      const owner = householdMembers.find((m: any) => m.id === currentHousehold?.ownerId)
+                      const isYou = currentHousehold?.ownerId === currentUser?.uid
+                      if (isYou) {
+                        return currentUser?.displayName || owner?.name || owner?.email || 'Você'
+                      }
+                      return owner?.name || owner?.email || String(currentHousehold?.ownerId || '').slice(0,8)
+                    })()
+                  }{currentHousehold?.ownerId === currentUser?.uid ? ' (você)' : ''}
+                </p>
+              </div>
+
+              {/* Ações do Menu */}
+              <div className="p-2">
+                {/* Gerar Convite */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    generateInviteCode()
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <UserPlus className="h-5 w-5 text-blue-600" />
+                  <span>Gerar Convite</span>
+                </button>
+
+                {/* Entrar com Código */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    setShowJoinModal(true)
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <LogIn className="h-5 w-5 text-green-600" />
+                  <span>Entrar com Código</span>
+                </button>
+
+                <div className="my-2 border-t border-gray-200 dark:border-gray-700"></div>
+
+                {/* Trocar de Casa */}
+                <button
+                  onClick={async () => {
+                    if (!currentUser) return
+                    setShowHamburgerMenu(false)
+                    setShowSwitcher(true)
+                    try {
+                      const list = await firebaseHouseholdService.getUserHouseholds(currentUser.uid)
+                      setMyHouseholds(list)
+                      try { await computeOnlineCounts(list, currentUser.uid) } catch {}
+                      try { await loadMembersForHouseholds(list) } catch {}
+                    } catch (e) {
+                      console.error('Erro ao carregar households do usuário', e)
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <RefreshCw className="h-5 w-5 text-purple-600" />
+                  <span>Trocar de Casa</span>
+                </button>
+
+                {/* Sair do Compartilhamento */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    setShowLeaveModal(true)
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <LogOut className="h-5 w-5 text-red-600" />
+                  <span>Sair do Compartilhamento</span>
+                </button>
+
+                <div className="my-2 border-t border-gray-200 dark:border-gray-700"></div>
+
+                {/* Lixeira */}
+                <button
+                  onClick={async () => {
+                    if (!currentHousehold) return
+                    setShowHamburgerMenu(false)
+                    setShowTrash(true)
+                    setTrashLoading(true)
+                    try {
+                      const items = await firebaseExpenseService.getDeletedExpenses(currentHousehold.id)
+                      setTrashItems(items)
+                      setSelectedTrashIds([])
+                    } catch (e) {
+                      console.error('Erro ao abrir lixeira', e)
+                      toast.error('Erro ao carregar lixeira')
+                      setShowTrash(false)
+                    } finally {
+                      setTrashLoading(false)
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <Trash2 className="h-5 w-5 text-gray-600" />
+                  <span>Lixeira</span>
+                </button>
+
+                {/* Excluir Todas */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    setShowDeleteAllModal(true)
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <X className="h-5 w-5 text-red-600" />
+                  <span>Excluir Todas</span>
+                </button>
+
+                {/* Restaurar Todas */}
+                <button
+                  onClick={async () => {
+                    if (!currentHousehold) return
+                    setShowHamburgerMenu(false)
+                    try {
+                      const count = await firebaseExpenseService.restoreAllExpenses(currentHousehold.id)
+                      toast.success(`♻️ ${count} despesas restauradas`)
+                    } catch (e) {
+                      console.error('Erro ao restaurar todas', e)
+                      toast.error('Erro ao restaurar despesas')
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <RefreshCw className="h-5 w-5 text-emerald-600" />
+                  <span>Restaurar Todas</span>
+                </button>
+
+                <div className="my-2 border-t border-gray-200 dark:border-gray-700"></div>
+
+                {/* Relatórios */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    navigate('/report')
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <BarChart3 className="h-5 w-5 text-indigo-600" />
+                  <span>Relatórios</span>
+                </button>
+
+                {/* Configurações */}
+                <button
+                  onClick={() => {
+                    setShowHamburgerMenu(false)
+                    navigate('/settings')
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition"
+                >
+                  <SettingsIcon className="h-5 w-5 text-gray-600" />
+                  <span>Configurações</span>
+                </button>
+              </div>
+
+              {/* Footer do Menu */}
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 mt-auto">
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span className={`inline-block h-2 w-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
+                  <span>{connected ? 'Sincronizado' : 'Offline'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Overlay para fechar */}
+            <div 
+              className="flex-1 h-full" 
+              onClick={() => setShowHamburgerMenu(false)}
+            />
           </div>
         )}
 
@@ -1993,28 +2049,14 @@ function ExpenseApp() {
         )}
       </div>
 
-      {/* FAB: Adicionar Despesa (mobile-first) */}
+      {/* FAB: Adicionar Despesa */}
       <button
         aria-label="Adicionar despesa"
-        className="fixed right-5 z-40 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition fab-safe-bottom btn-touch-safe sm:hidden"
+        className="fixed right-5 bottom-5 z-40 h-14 w-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition btn-touch-safe"
         onClick={() => setShowModal(true)}
       >
         <Plus className="h-7 w-7" />
       </button>
-
-      {/* Bottom Tab Bar */}
-      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur safe-bottom sm:hidden">
-        <div className="grid grid-cols-2">
-          <Link to="/expenses" className="flex flex-col items-center justify-center py-2.5 text-blue-600">
-            <CreditCard className="h-5 w-5" />
-            <span className="text-xs mt-0.5">Despesas</span>
-          </Link>
-          <Link to="/settings" className="flex flex-col items-center justify-center py-2.5 text-gray-500 hover:text-gray-700">
-            <SettingsIcon className="h-5 w-5" />
-            <span className="text-xs mt-0.5">Configurações</span>
-          </Link>
-        </div>
-      </nav>
     </div>
   )
 }
