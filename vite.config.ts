@@ -18,12 +18,20 @@ export default defineConfig({
     include: ['immer'],
   },
   server: {
-    host: '0.0.0.0',
+    host: '0.0.0.0', // Permite acesso de qualquer dispositivo na rede
     port: 5173,
     strictPort: true,
     hmr: {
-      host: 'localhost',
+      // Configuração otimizada para HMR via LAN
+      protocol: 'ws',
+      port: 5173,
+      // Permite conexões de qualquer origem para desenvolvimento
+      clientPort: 5173,
     },
+    // Permite CORS para desenvolvimento
+    cors: true,
+    // Não abre automaticamente o navegador
+    open: false,
   },
   build: {
     target: 'es2022',

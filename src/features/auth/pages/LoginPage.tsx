@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Alert, AlertDescription } from '../../../components/ui/alert';
 import { Loader2, LogIn } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
+import { NetworkDebugCard } from '../../../components/NetworkDebugCard';
 
 export default function LoginPage() {
   const { signIn, isLoading } = useAuth();
@@ -111,7 +112,8 @@ export default function LoginPage() {
         </CardContent>
       </Card>
 
-
+      {/* Debug info para desenvolvimento */}
+      <NetworkDebugCard />
     </div>
   );
 }

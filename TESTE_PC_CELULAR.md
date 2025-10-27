@@ -1,11 +1,31 @@
 # 📱💻 **Guia de Teste - PC + Celular**
 
-## 🌐 **Servidor Está Rodando!**
+## ⚠️ **IMPORTANTE: Configuração Atualizada!**
 
-### 📍 **URLs Disponíveis:**
+As configurações do Vite foram atualizadas para funcionar corretamente via LAN.
+**Veja o arquivo `GUIA_DESENVOLVIMENTO_LAN.md` para detalhes completos.**
+
+## 🚀 **Como Iniciar**
+
+### 1. Inicie o servidor com o comando correto:
+```bash
+npm run dev:lan
+```
+ou
+```bash
+pnpm dev:lan
+```
+
+### 2. O Vite mostrará os endereços disponíveis:
+```
+➜  Local:   http://localhost:5173/
+➜  Network: http://192.168.1.9:5173/  ← USE ESTE NO CELULAR
+```
+
+## 🌐 **URLs Disponíveis:**
 - **PC (Local):** http://localhost:5173/
-- **Celular (Rede):** http://192.168.1.9:5173/
-- **Alternativo:** http://192.168.56.1:5173/
+- **Celular (Rede):** Use o endereço **Network** mostrado pelo Vite
+- **Nota:** O IP pode variar dependendo da sua rede
 
 ---
 

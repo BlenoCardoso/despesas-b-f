@@ -210,7 +210,8 @@ export class AuthService {
           throw new Error('Popup bloqueado pelo navegador. Permita popups para este site.');
         } else if (error?.code === 'auth/unauthorized-domain') {
           // Clear, actionable message when trying to use a LAN IP / ngrok domain not registered in Firebase
-          throw new Error('Domínio não autorizado pelo Firebase. Adicione o domínio (por exemplo: 192.168.0.122 ou seu-subdominio.ngrok.io) em Firebase Console > Authentication > Authorized domains.');
+          const currentDomain = window.location.hostname;
+          throw new Error(`🚫 Domínio "${currentDomain}" não autorizado pelo Firebase.\n\n✅ SOLUÇÃO:\n1. Acesse: https://console.firebase.google.com/\n2. Projeto: despesas-compartilhadas\n3. Authentication → Settings → Authorized domains\n4. Adicione: ${currentDomain}\n\n🔧 OU teste em localhost primeiro: http://localhost:5173`);
         } else if (error?.code === 'auth/network-request-failed') {
           throw new Error('Erro de conexão. Verifique sua internet.');
         }
