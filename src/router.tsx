@@ -1,6 +1,7 @@
-import { createBrowserRouter, Link, useNavigate } from 'react-router-dom'
+import { createBrowserRouter, Link, useNavigate, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import type { LazyExoticComponent } from 'react'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { firebaseExpenseService } from './services/firebaseExpenseService'
 import { firebaseHouseholdService } from './services/firebaseHouseholdService'
@@ -11,6 +12,8 @@ import { shareInviteService } from './services/shareInviteService'
 import { auth } from './config/firebase'
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import type { Expense } from './types/firebase-schema'
+import { Layout } from '@/components/Layout'
+import { SectionLoading } from '@/components/ui/loading'
 // Ícones para uma UI mais "app"
 import {
   Home as HomeIcon,
@@ -2509,10 +2512,20 @@ import LoginPage from '@/features/auth/pages/LoginPage'
 import InvitePage from '@/pages/InvitePage'
 import ReportPage from '@/pages/Report'
 import HomePage from '@/pages/HomePage'
-import { MobileExpensesPage } from '@/pages/UltraSimplePage'
-import { NewSettingsPage } from '@/pages/NewSettingsPage'
 import AuthLayout from '@/components/layouts/AuthLayout'
-import { SimpleLayout } from '@/components/SimpleLayout'
+
+const LazyHamburgerPage = lazy(() => import('@/features/navigation/pages/HamburgerPage').then(m => ({ default: m.HamburgerPage })))
+const LazyNewExpensesPage = lazy(() => import('@/pages/NewExpensesPage').then(m => ({ default: m.NewExpensesPage })))
+const LazyCalendarPage = lazy(() => import('@/features/calendar/pages/CalendarPage').then(m => ({ default: m.CalendarPage })))
+const LazyRemindersPage = lazy(() => import('@/features/reminders/pages/RemindersPage').then(m => ({ default: m.RemindersPage })))
+const LazyPersonalExpensesPage = lazy(() => import('@/features/expenses/pages/PersonalExpensesPage').then(m => ({ default: m.PersonalExpensesPage })))
+const LazyNewSettingsPage = lazy(() => import('@/pages/NewSettingsPage').then(m => ({ default: m.NewSettingsPage })))
+
+const withSuspense = (Component: LazyExoticComponent<() => JSX.Element>, message: string) => (
+  <Suspense fallback={<SectionLoading message={message} />}>
+    <Component />
+  </Suspense>
+)
 
 // Componente temporário para registro
 const RegisterPage = () => <div>Register Page - Em desenvolvimento</div>
@@ -2553,20 +2566,47 @@ export const router = createBrowserRouter([
 
   // SISTEMA PRINCIPAL com Layout completo
   {
+    path: '/app',
+    element: <Layout />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/app/menu" replace />
+      },
+      {
+        path: 'menu',
+        element: withSuspense(LazyHamburgerPage, 'Carregando atalhos rápidos')
+      },
+      {
+        path: 'expenses',
+        element: withSuspense(LazyNewExpensesPage, 'Carregando despesas')
+      },
+      {
+        path: 'calendar',
+        element: withSuspense(LazyCalendarPage, 'Carregando calendário')
+      },
+      {
+        path: 'reminders',
+        element: withSuspense(LazyRemindersPage, 'Carregando lembretes')
+      },
+      {
+        path: 'personal',
+        element: withSuspense(LazyPersonalExpensesPage, 'Carregando suas despesas')
+      },
+      {
+        path: 'settings',
+        element: withSuspense(LazyNewSettingsPage, 'Carregando configurações')
+      }
+    ]
+  },
+  {
     path: '/expenses',
-    element: <ExpenseApp />
+    element: <Navigate to="/app/expenses" replace />
   },
   {
     path: '/settings',
-    element: <SimpleLayout />,
-    children: [
-      {
-        path: '',
-        element: <NewSettingsPage />
-      }
-    ]
-  }
-  ,
+    element: <Navigate to="/app/settings" replace />
+  },
   {
     path: '/report',
     element: <ReportPage />
