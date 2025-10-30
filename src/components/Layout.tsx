@@ -8,7 +8,10 @@ import {
   Menu,
   User,
   Home,
-  LogOut
+  LogOut,
+  Calendar,
+  Bell,
+  PiggyBank
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHouseholds } from '@/hooks/useHouseholds'
@@ -23,14 +26,38 @@ import { useAuth } from '@/hooks/useAuth'
 
 const navigation = [
   {
+    name: 'Hambúrguer',
+    href: '/app/menu',
+    icon: Menu,
+    badge: 0,
+  },
+  {
     name: 'Despesas',
-    href: '/expenses',
+    href: '/app/expenses',
     icon: CreditCard,
     badge: 0,
   },
   {
+    name: 'Despesas Pessoais',
+    href: '/app/personal',
+    icon: PiggyBank,
+    badge: 0,
+  },
+  {
+    name: 'Calendário',
+    href: '/app/calendar',
+    icon: Calendar,
+    badge: 0,
+  },
+  {
+    name: 'Lembretes',
+    href: '/app/reminders',
+    icon: Bell,
+    badge: 0,
+  },
+  {
     name: 'Configurações',
-    href: '/settings',
+    href: '/app/settings',
     icon: Settings,
     badge: 0,
   },
@@ -119,7 +146,7 @@ export function Layout() {
               {/* Navigation */}
               <nav className="mt-4 lg:mt-6 flex-1 px-2 lg:px-2 space-y-0.5 lg:space-y-1">
                 {navigation.map((item) => {
-                  const isActive = location.pathname === item.href
+                  const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                   const Icon = item.icon
               
                   return (
@@ -350,7 +377,7 @@ export function Layout() {
                   </Button>
                   <div className="min-w-0 flex-1">
                     <h1 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
-                      {navigation.find(nav => nav.href === location.pathname)?.name || 'Despesas'}
+                      {navigation.find(nav => location.pathname.startsWith(nav.href))?.name || 'Despesas'}
                     </h1>
                     {currentHousehold && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
